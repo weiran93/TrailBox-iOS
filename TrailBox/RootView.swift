@@ -1,9 +1,19 @@
 import SwiftUI
 
+struct BottomBarVisibilityPreferenceKey: PreferenceKey {
+    static let defaultValue = true
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value && nextValue()
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var deepLinkRouter: DeepLinkRouter
     @State private var selectedTab: Tab = .explore
     @State private var showAuthentication = false
+    @State private var showsBottomBar = true
 
     private enum Tab { case explore, activity }
 
@@ -13,11 +23,23 @@ struct RootView: View {
                 if selectedTab == .explore { ExploreView(showAuthentication: $showAuthentication) }
                 else { MyTracksView(showAuthentication: $showAuthentication) }
             }
-            .padding(.bottom, 70)
-            bottomBar
+            .padding(.bottom, showsBottomBar ? 70 : 0)
+            if showsBottomBar {
+                bottomBar
+            }
         }
         .background(TrailBoxColor.background)
-        .sheet(isPresented: $showAuthentication) { AuthenticationView() }
+        .onPreferenceChange(BottomBarVisibilityPreferenceKey.self) { showsBottomBar = $0 }
+        .sheet(isPresented: Binding(
+            get: { showAuthentication || session.shouldPresentAuthentication },
+            set: { presented in
+                showAuthentication = presented
+                if !presented { session.shouldPresentAuthentication = false }
+            }
+        )) { AuthenticationView() }
+        .sheet(item: $deepLinkRouter.pendingRoute) { route in
+            NavigationStack { TrackDetailView(trackID: route.id, isPublicSource: true) }
+        }
     }
 
     private var bottomBar: some View {

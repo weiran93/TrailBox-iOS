@@ -22,19 +22,23 @@ final class ExploreViewModel: ObservableObject {
         switch sortBy { case "distanceDesc": return result.sorted { $0.distanceM > $1.distanceM }; case "elevationDesc": return result.sorted { $0.elevationGainM > $1.elevationGainM }; default: return result.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) } }
     }
 
-    func load() async {
-        state = .loading
+    func load(token: String? = nil) async {
+        let isInitialLoad = tracks.isEmpty
+        if isInitialLoad { state = .loading }
         do {
-            async let fetchedTracks: [Track] = APIClient.shared.request("/tracks/public?include_points=true")
+            async let fetchedTracks: [Track] = APIClient.shared.request("/tracks/public?include_points=true", token: token)
             async let fetchedTags: [ConfiguredTag] = APIClient.shared.request("/tags")
             tracks = try await fetchedTracks
             tags = (try? await fetchedTags) ?? []
             state = tracks.isEmpty ? .empty : .content
-        } catch { state = .failed(error.localizedDescription) }
+        } catch {
+            if isInitialLoad { state = .failed(error.localizedDescription) }
+        }
     }
 }
 
 struct ExploreView: View {
+    @EnvironmentObject private var session: SessionStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = ExploreViewModel()
     @State private var showFilters = false
@@ -56,8 +60,8 @@ struct ExploreView: View {
             }
             .background(TrailBoxColor.background)
             .toolbar(.hidden, for: .navigationBar)
-            .task { await viewModel.load() }
-            .refreshable { await viewModel.load() }
+            .task { await viewModel.load(token: session.token) }
+            .refreshable { await viewModel.load(token: session.token) }
             .sheet(isPresented: $showFilters) { ExploreFilterSheet(viewModel: viewModel) }
         }
     }
@@ -77,7 +81,6 @@ struct ExploreView: View {
                         }.padding(.horizontal, 16)
                     }
                 }
-                Text("共找到 \(viewModel.filteredTracks.count) 条路线").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText).padding(.horizontal, 16)
                 if viewModel.filteredTracks.isEmpty {
                     VStack(spacing: 8) { Image(systemName: "line.3.horizontal.decrease.circle").font(.title2).foregroundStyle(TrailBoxColor.secondaryText); Text("暂无匹配路线").font(.headline); Text("试试调整筛选条件").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) }
                         .frame(maxWidth: .infinity).padding(.top, 48)
@@ -189,8 +192,16 @@ struct RouteThumbnail: View {
         guard points.count > 1 else { return }
         let lats = points.map(\.lat), lons = points.map(\.lon)
         guard let minLat = lats.min(), let maxLat = lats.max(), let minLon = lons.min(), let maxLon = lons.max() else { return }
-        let padding: CGFloat = 14
-        func position(_ point: TrackPoint) -> CGPoint { CGPoint(x: padding + CGFloat((point.lon - minLon) / max(maxLon - minLon, 0.00001)) * (size.width - 2 * padding), y: size.height - padding - CGFloat((point.lat - minLat) / max(maxLat - minLat, 0.00001)) * (size.height - 2 * padding)) }
+        // Reserve space for the route title overlaid at the bottom of the card.
+        let horizontalPadding: CGFloat = 20
+        let topPadding: CGFloat = 20
+        let bottomPadding: CGFloat = 54
+        func position(_ point: TrackPoint) -> CGPoint {
+            CGPoint(
+                x: horizontalPadding + CGFloat((point.lon - minLon) / max(maxLon - minLon, 0.00001)) * (size.width - 2 * horizontalPadding),
+                y: size.height - bottomPadding - CGFloat((point.lat - minLat) / max(maxLat - minLat, 0.00001)) * (size.height - topPadding - bottomPadding)
+            )
+        }
         var path = Path(); path.move(to: position(points[0])); for point in points.dropFirst() { path.addLine(to: position(point)) }
         context.stroke(path, with: .color(Color(red: 0.09, green: 0.42, blue: 0.23)), style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
         for (point, color) in [(points.first!, Color.green), (points.last!, Color.red)] { context.fill(Path(ellipseIn: CGRect(x: position(point).x - 5, y: position(point).y - 5, width: 10, height: 10)), with: .color(color)) }

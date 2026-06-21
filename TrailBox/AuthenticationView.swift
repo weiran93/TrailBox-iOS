@@ -9,6 +9,7 @@ struct AuthenticationView: View {
     @State private var nickname = ""
     @State private var isSubmitting = false
     @State private var errorMessage: String?
+    @State private var showPrivacyPolicy = false
 
     enum Mode { case login, register }
 
@@ -34,12 +35,15 @@ struct AuthenticationView: View {
                     }
                     Button(mode == .login ? "没有账号？去注册" : "已有账号？去登录") { mode = mode == .login ? .register : .login; errorMessage = nil }
                         .font(.subheadline).foregroundStyle(TrailBoxColor.primaryDark)
+                    Button("隐私政策") { showPrivacyPolicy = true }
+                        .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
                     Spacer()
                 }.padding(.horizontal, 16)
             }
             .navigationTitle(mode == .login ? "登录" : "注册")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("取消") { dismiss() } } }
+            .sheet(isPresented: $showPrivacyPolicy) { NavigationStack { PrivacyPolicyView() } }
         }
     }
 

@@ -5,6 +5,7 @@ final class SessionStore: ObservableObject {
     @Published private(set) var user: User?
     @Published private(set) var token: String?
     @Published var authenticationError: String?
+    @Published var shouldPresentAuthentication = false
 
     init() {
         token = KeychainStore.readToken()
@@ -33,6 +34,16 @@ final class SessionStore: ObservableObject {
         authenticationError = nil
         KeychainStore.deleteToken()
         UserDefaults.standard.removeObject(forKey: "trailbox.current-user")
+    }
+
+    func requireAuthentication() {
+        shouldPresentAuthentication = true
+    }
+
+    func deleteAccount() async throws {
+        guard let token else { return }
+        try await APIClient.shared.requestVoid("/users/me", method: "DELETE", token: token)
+        logout()
     }
 
     func handle(_ error: Error) {
