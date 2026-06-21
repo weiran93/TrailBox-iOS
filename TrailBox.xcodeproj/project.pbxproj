@@ -1,0 +1,250 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000001 /* TrailBoxApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000101 /* TrailBoxApp.swift */; };
+		A00000000000000000000002 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000102 /* AppConfiguration.swift */; };
+		A00000000000000000000003 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000103 /* APIClient.swift */; };
+		A00000000000000000000004 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000104 /* KeychainStore.swift */; };
+		A00000000000000000000005 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000105 /* Models.swift */; };
+		A00000000000000000000006 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000106 /* SessionStore.swift */; };
+		A00000000000000000000007 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* DesignSystem.swift */; };
+		A00000000000000000000008 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000108 /* RootView.swift */; };
+		A00000000000000000000009 /* AuthenticationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000109 /* AuthenticationView.swift */; };
+		A00000000000000000000010 /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000110 /* ExploreView.swift */; };
+		A00000000000000000000011 /* MyTracksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000111 /* MyTracksView.swift */; };
+		A00000000000000000000012 /* TrackDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000112 /* TrackDetailView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A00000000000000000000101 /* TrailBoxApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailBoxApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000102 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
+		A00000000000000000000103 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		A00000000000000000000104 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000105 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A00000000000000000000106 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000107 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		A00000000000000000000108 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		A00000000000000000000109 /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
+		A00000000000000000000110 /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
+		A00000000000000000000111 /* MyTracksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyTracksView.swift; sourceTree = "<group>"; };
+		A00000000000000000000112 /* TrackDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDetailView.swift; sourceTree = "<group>"; };
+		A00000000000000000000120 /* TrailBox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = TrailBox.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A00000000000000000000201 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000301 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000302 /* TrailBox */,
+				A00000000000000000000303 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000302 /* TrailBox */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000101 /* TrailBoxApp.swift */,
+				A00000000000000000000102 /* AppConfiguration.swift */,
+				A00000000000000000000103 /* APIClient.swift */,
+				A00000000000000000000104 /* KeychainStore.swift */,
+				A00000000000000000000105 /* Models.swift */,
+				A00000000000000000000106 /* SessionStore.swift */,
+				A00000000000000000000107 /* DesignSystem.swift */,
+				A00000000000000000000108 /* RootView.swift */,
+				A00000000000000000000109 /* AuthenticationView.swift */,
+				A00000000000000000000110 /* ExploreView.swift */,
+				A00000000000000000000111 /* MyTracksView.swift */,
+				A00000000000000000000112 /* TrackDetailView.swift */,
+			);
+			path = TrailBox;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000303 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000120 /* TrailBox.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000401 /* TrailBox */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000502 /* Build configuration list for PBXNativeTarget "TrailBox" */;
+			buildPhases = (
+				A00000000000000000000202 /* Sources */,
+				A00000000000000000000201 /* Frameworks */,
+				A00000000000000000000203 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TrailBox;
+			productName = TrailBox;
+			productReference = A00000000000000000000120 /* TrailBox.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000601 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A00000000000000000000401 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000501 /* Build configuration list for PBXProject "TrailBox" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+			);
+			mainGroup = A00000000000000000000301;
+			productRefGroup = A00000000000000000000303 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000401 /* TrailBox */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000203 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A00000000000000000000202 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000001 /* TrailBoxApp.swift in Sources */,
+				A00000000000000000000002 /* AppConfiguration.swift in Sources */,
+				A00000000000000000000003 /* APIClient.swift in Sources */,
+				A00000000000000000000004 /* KeychainStore.swift in Sources */,
+				A00000000000000000000005 /* Models.swift in Sources */,
+				A00000000000000000000006 /* SessionStore.swift in Sources */,
+				A00000000000000000000007 /* DesignSystem.swift in Sources */,
+				A00000000000000000000008 /* RootView.swift in Sources */,
+				A00000000000000000000009 /* AuthenticationView.swift in Sources */,
+				A00000000000000000000010 /* ExploreView.swift in Sources */,
+				A00000000000000000000011 /* MyTracksView.swift in Sources */,
+				A00000000000000000000012 /* TrackDetailView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000701 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+			};
+			name = Debug;
+		};
+		A00000000000000000000702 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+			};
+			name = Release;
+		};
+		A00000000000000000000703 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CNXB3793X3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "小野box";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.trailbox.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A00000000000000000000704 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CNXB3793X3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "小野box";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.trailbox.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000501 /* Build configuration list for PBXProject "TrailBox" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000701 /* Debug */,
+				A00000000000000000000702 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000502 /* Build configuration list for PBXNativeTarget "TrailBox" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000703 /* Debug */,
+				A00000000000000000000704 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000601 /* Project object */;
+}
