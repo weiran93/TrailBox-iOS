@@ -308,13 +308,236 @@ struct AdminDashboardView: View {
     @State private var tracks: [Track] = []
     @State private var query = ""
     @State private var publicOnly = false
+    @State private var trackPendingDeletion: Track?
+    @State private var actionError: String?
     var body: some View {
-        Group { if let stats { List { Section("统计") { metric("全部轨迹", stats.total); metric("公开路线", stats.public); metric("私有记录", stats.private) }; Section("筛选") { TextField("搜索名称、城市或标签", text: $query).onSubmit { Task { await loadTracks() } }; Toggle("仅公开路线", isOn: $publicOnly).onChange(of: publicOnly) { _ in Task { await loadTracks() } } }; Section("最近轨迹") { ForEach(tracks) { track in VStack(alignment: .leading, spacing: 3) { Text(track.name); Text("\(track.city ?? "-") · \(track.isPublic ? "公开" : "私有")").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) } } } } } else if let error { EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: error) } else { ProgressView() } }
+        Group { if let stats { List { Section("统计") { metric("全部轨迹", stats.total); metric("公开路线", stats.public); metric("私有记录", stats.private) }; Section("管理工具") { NavigationLink("批量上传轨迹") { AdminBatchUploadView() }; NavigationLink("标签配置") { AdminTagSettingsView() } }; Section("筛选") { TextField("搜索名称、城市或标签", text: $query).onSubmit { Task { await loadTracks() } }; Toggle("仅公开路线", isOn: $publicOnly).onChange(of: publicOnly) { _ in Task { await loadTracks() } } }; Section("最近轨迹") { ForEach(tracks) { track in VStack(alignment: .leading, spacing: 3) { Text(track.name); Text("\(track.city ?? "-") · \(track.isPublic ? "公开" : "私有")").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }.swipeActions(allowsFullSwipe: false) { Button("删除", role: .destructive) { trackPendingDeletion = track } } } } } } else if let error { EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: error) } else { ProgressView() } }
             .navigationTitle("管理后台").task { await load() }
+            .confirmationDialog("删除轨迹？", isPresented: Binding(get: { trackPendingDeletion != nil }, set: { if !$0 { trackPendingDeletion = nil } }), titleVisibility: .visible) {
+                Button("删除", role: .destructive) { if let track = trackPendingDeletion { delete(track) } }
+                Button("取消", role: .cancel) { trackPendingDeletion = nil }
+            } message: { Text("将永久删除“\(trackPendingDeletion?.name ?? "")”，此操作不可撤销。") }
+            .alert("删除失败", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) { Button("确定", role: .cancel) {} } message: { Text(actionError ?? "") }
     }
     private func metric(_ title: String, _ value: Int) -> some View { SectionCard { HStack { Text(title); Spacer(); Text("\(value)").font(.title3.bold()).foregroundStyle(TrailBoxColor.primaryDark) } } }
     private func load() async { guard let token = session.token else { return }; do { stats = try await APIClient.shared.request("/admin/stats", token: token); await loadTracks() } catch { self.error = error.localizedDescription } }
     private func loadTracks() async { guard let token = session.token else { return }; var path = "/admin/tracks?limit=20"; if !query.isEmpty { path += "&q=" + query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)! }; if publicOnly { path += "&is_public=true" }; do { tracks = try await APIClient.shared.request(path, token: token) } catch { self.error = error.localizedDescription } }
+    private func delete(_ track: Track) { guard let token = session.token else { return }; trackPendingDeletion = nil; Task { do { try await APIClient.shared.requestVoid("/admin/tracks/\(track.id)", method: "DELETE", token: token); tracks.removeAll { $0.id == track.id }; await load() } catch { actionError = error.localizedDescription } } }
+}
+
+struct AdminTagSettingsView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var tagsText = ""
+    @State private var isLoading = true
+    @State private var isSaving = false
+    @State private var message: String?
+
+    var body: some View {
+        Form {
+            Section("标签") {
+                TextEditor(text: $tagsText).frame(minHeight: 130)
+                Text("用逗号或换行分隔。顺序决定“探索路线”顶部筛选标签的展示顺序。删除后不会移除已有轨迹上的标签。")
+                    .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
+            }
+            if let message { Section { Text(message).foregroundStyle(TrailBoxColor.secondaryText) } }
+        }
+        .navigationTitle("标签配置")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(isSaving ? "保存中…" : "保存") { save() }
+                    .disabled(isLoading || isSaving)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let token = session.token else { return }
+        do {
+            let tags: [ConfiguredTag] = try await APIClient.shared.request("/admin/tags", token: token)
+            tagsText = tags.map(\.name).joined(separator: ",")
+        } catch { message = error.localizedDescription }
+        isLoading = false
+    }
+
+    private func save() {
+        struct Request: Encodable { let names: [String] }
+        guard let token = session.token else { return }
+        let names = tagsText.split(whereSeparator: { $0 == "," || $0 == "，" || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "#")) }
+            .filter { !$0.isEmpty }
+        isSaving = true; message = nil
+        Task {
+            do {
+                let tags: [ConfiguredTag] = try await APIClient.shared.request("/admin/tags", method: "PUT", body: Request(names: names), token: token)
+                tagsText = tags.map(\.name).joined(separator: ",")
+                message = "标签已保存"
+            } catch { message = error.localizedDescription }
+            isSaving = false
+        }
+    }
+}
+
+struct AdminBatchUploadView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var showFileImporter = false
+    @State private var selectedFiles: [URL] = []
+    @State private var isUploading = false
+    @State private var uploadedTracks: [Track] = []
+    @State private var errorMessage: String?
+    @State private var showEditor = false
+
+    var body: some View {
+        Form {
+            Section("上传收集的轨迹") {
+                Text("选择一个或多个 FIT、GPX 或 KML 文件。系统会自动识别名称、城市和标签，上传后可统一调整。")
+                    .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
+                Button("选择文件") { showFileImporter = true }
+                if !selectedFiles.isEmpty {
+                    ForEach(selectedFiles, id: \.self) { file in
+                        HStack {
+                            Text(file.lastPathComponent).lineLimit(1)
+                            Spacer()
+                            Button(role: .destructive) { selectedFiles.removeAll { $0 == file } } label: { Image(systemName: "xmark.circle.fill") }
+                        }
+                    }
+                }
+            }
+            if let errorMessage { Section { Text(errorMessage).foregroundStyle(TrailBoxColor.danger) } }
+        }
+        .navigationTitle("批量上传轨迹")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(isUploading ? "上传中…" : "上传并编辑") { upload() }
+                    .disabled(selectedFiles.isEmpty || isUploading)
+            }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.data], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            selectedFiles = urls
+        }
+        .navigationDestination(isPresented: $showEditor) { AdminBatchEditView(tracks: uploadedTracks) }
+    }
+
+    private func upload() {
+        guard let token = session.token else { return }
+        isUploading = true; errorMessage = nil
+        Task {
+            let files = selectedFiles
+            let scopedFiles = files.filter { $0.startAccessingSecurityScopedResource() }
+            defer { scopedFiles.forEach { $0.stopAccessingSecurityScopedResource() } }
+            do {
+                let result = try await APIClient.shared.uploadAdminTracks(fileURLs: files, token: token)
+                if result.tracks.isEmpty {
+                    errorMessage = result.errors.map(\.error).joined(separator: "\n")
+                } else {
+                    uploadedTracks = result.tracks
+                    selectedFiles = []
+                    if !result.errors.isEmpty { errorMessage = "\(result.errors.count) 个文件上传失败：\(result.errors.map(\.error).joined(separator: "；"))" }
+                    showEditor = true
+                }
+            } catch { errorMessage = error.localizedDescription }
+            isUploading = false
+        }
+    }
+}
+
+struct AdminBatchEditView: View {
+    struct EditableTrack: Identifiable {
+        let id: String
+        var name: String
+        var city: String
+        var tags: String
+        var sport: String
+        var isPublic: Bool
+        var showContributor: Bool
+        let distanceM: Double
+        let elevationGainM: Double
+
+        init(_ track: Track) {
+            id = track.id; name = track.name; city = track.city ?? ""; tags = track.tags ?? ""; sport = track.sport ?? "越野跑"
+            isPublic = track.isPublic; showContributor = track.showContributor; distanceM = track.distanceM; elevationGainM = track.elevationGainM
+        }
+    }
+
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var tracks: [EditableTrack]
+    @State private var globalCity = ""
+    @State private var globalTags = ""
+    @State private var globalSport = ""
+    @State private var globalPublic = true
+    @State private var globalContributor = true
+    @State private var isSaving = false
+    @State private var message: String?
+
+    init(tracks: [Track]) { _tracks = State(initialValue: tracks.map(EditableTrack.init)) }
+
+    var body: some View {
+        Form {
+            Section("统一设置") {
+                TextField("城市（留空不修改）", text: $globalCity)
+                TextField("标签（留空不修改）", text: $globalTags)
+                Picker("运动类型", selection: $globalSport) { Text("不修改").tag(""); Text("越野跑").tag("越野跑"); Text("徒步").tag("徒步") }
+                Toggle("公开到探索路线", isOn: $globalPublic)
+                Toggle("展示贡献者昵称", isOn: $globalContributor)
+                Button("应用到全部") { applyToAll() }
+            }
+            Section("逐条调整") {
+                ForEach($tracks) { $track in
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("名称", text: $track.name)
+                        TextField("城市", text: $track.city)
+                        TextField("标签", text: $track.tags)
+                        Picker("运动类型", selection: $track.sport) { Text("越野跑").tag("越野跑"); Text("徒步").tag("徒步") }
+                        Toggle("公开", isOn: $track.isPublic)
+                        Toggle("展示贡献者", isOn: $track.showContributor)
+                        Text("\(DisplayFormat.distance(track.distanceM)) · 爬升 \(DisplayFormat.elevation(track.elevationGainM))")
+                            .font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                    }.padding(.vertical, 4)
+                }
+            }
+            if let message { Section { Text(message).foregroundStyle(TrailBoxColor.secondaryText) } }
+        }
+        .navigationTitle("批量编辑轨迹")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(isSaving ? "保存中…" : "保存全部") { save() }.disabled(tracks.isEmpty || isSaving)
+            }
+        }
+    }
+
+    private func applyToAll() {
+        for index in tracks.indices {
+            if !globalCity.isEmpty { tracks[index].city = globalCity }
+            if !globalTags.isEmpty { tracks[index].tags = globalTags }
+            if !globalSport.isEmpty { tracks[index].sport = globalSport }
+            tracks[index].isPublic = globalPublic
+            tracks[index].showContributor = globalContributor
+        }
+    }
+
+    private func save() {
+        struct Item: Encodable {
+            let id: String; let name: String; let city: String?; let tags: String?; let sport: String; let isPublic: Bool; let showContributor: Bool
+            enum CodingKeys: String, CodingKey { case id, name, city, tags, sport; case isPublic = "is_public"; case showContributor = "show_contributor" }
+        }
+        struct Request: Encodable { let items: [Item] }
+        guard let token = session.token else { return }
+        let items = tracks.map { Item(id: $0.id, name: $0.name, city: $0.city.isEmpty ? nil : $0.city, tags: $0.tags.isEmpty ? nil : $0.tags, sport: $0.sport, isPublic: $0.isPublic, showContributor: $0.showContributor) }
+        isSaving = true; message = nil
+        Task {
+            do {
+                let result: AdminBatchUploadResult = try await APIClient.shared.request("/admin/tracks/batch", method: "PATCH", body: Request(items: items), token: token)
+                if result.errors.isEmpty { message = "\(result.tracks.count) 条轨迹已保存" }
+                else { message = "\(result.tracks.count) 条已保存，\(result.errors.count) 条失败" }
+            } catch { message = error.localizedDescription }
+            isSaving = false
+        }
+    }
 }
 
 struct AdminAISettingsView: View {
@@ -466,7 +689,11 @@ struct UploadTrackView: View {
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.data]) { result in
                 guard case .success(let url) = result else { return }
                 selectedFile = url
-                if name.isEmpty { name = url.deletingPathExtension().lastPathComponent }
+                name = url.deletingPathExtension().lastPathComponent
+                city = ""
+                tags = ""
+                sport = "越野跑"
+                errorMessage = nil
                 suggest(for: url)
             }
         }

@@ -87,6 +87,33 @@ final class APIClient {
         return try decoder.decode(Track.self, from: data)
     }
 
+    func uploadAdminTracks(fileURLs: [URL], token: String) async throws -> AdminBatchUploadResult {
+        guard let url = URL(string: "/admin/tracks/batch", relativeTo: AppConfiguration.apiBaseURL)?.absoluteURL else { throw APIError.invalidResponse }
+        let boundary = "TrailBox-\(UUID().uuidString)"
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        for fileURL in fileURLs {
+            let filename = fileURL.lastPathComponent
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8))
+            body.append(try Data(contentsOf: fileURL))
+            body.append(Data("\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
+
+        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw APIError.server(detail ?? "批量上传失败")
+        }
+        return try decoder.decode(AdminBatchUploadResult.self, from: data)
+    }
+
     func suggestMetadata(fileURL: URL, token: String?) async throws -> TrackMetadataSuggestion {
         guard let url = URL(string: "/tracks/suggest-metadata", relativeTo: AppConfiguration.apiBaseURL)?.absoluteURL else { throw APIError.invalidResponse }
         let boundary = "TrailBox-\(UUID().uuidString)"

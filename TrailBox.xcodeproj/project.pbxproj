@@ -205,7 +205,8 @@
 				CODE_SIGN_ENTITLEMENTS = TrailBox/TrailBox.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CNXB3793X3;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TrailBox/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "小野box";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于记录并转写本次运动的体感反馈。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于将你的运动体感语音转成文字。";
@@ -229,7 +230,8 @@
 				CODE_SIGN_ENTITLEMENTS = TrailBox/TrailBox.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CNXB3793X3;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TrailBox/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "小野box";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于记录并转写本次运动的体感反馈。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于将你的运动体感语音转成文字。";

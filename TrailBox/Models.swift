@@ -71,6 +71,19 @@ struct Track: Codable, Identifiable, Equatable {
 
 struct ConfiguredTag: Codable, Identifiable { let id: Int; let name: String; let sortOrder: Int; enum CodingKeys: String, CodingKey { case id, name; case sortOrder = "sort_order" } }
 
+struct AdminBatchOperationError: Codable, Identifiable {
+    let id: String?
+    let filename: String?
+    let error: String
+
+    var identifier: String { id ?? filename ?? UUID().uuidString }
+}
+
+struct AdminBatchUploadResult: Codable {
+    let tracks: [Track]
+    let errors: [AdminBatchOperationError]
+}
+
 struct TrackMetadataSuggestion: Codable {
     let name: String?
     let city: String?

@@ -121,16 +121,21 @@ struct TrackCard: View {
             ZStack {
                 RouteThumbnail(points: track.points)
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .aspectRatio(16.0 / 8.0, contentMode: .fit)
                 LinearGradient(colors: [.black.opacity(0.18), .clear, .black.opacity(0.64)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading) {
-                    HStack { Text("ROUTE").font(.caption2.bold()).tracking(2).foregroundStyle(.white.opacity(0.9)); Spacer(); if let city = track.city, !city.isEmpty { Text(city).font(.caption.weight(.medium)).foregroundStyle(.white).padding(.horizontal, 8).padding(.vertical, 4).background(.black.opacity(0.32)).clipShape(Capsule()).overlay(Capsule().stroke(.white.opacity(0.28))) } }
                     Spacer()
                     Text(track.name).font(.headline.bold()).foregroundStyle(.white).lineLimit(2).shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                 }.padding(14)
             }
             VStack(alignment: .leading, spacing: 9) {
-                Text(subtitle).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                HStack(spacing: 8) {
+                    Text(subtitle).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                    Spacer(minLength: 0)
+                    if let city = track.city, !city.isEmpty {
+                        Text(city).font(.caption.weight(.medium)).foregroundStyle(TrailBoxColor.primaryDark).padding(.horizontal, 8).padding(.vertical, 4).background(TrailBoxColor.primary.opacity(0.12)).clipShape(Capsule())
+                    }
+                }
                 if !track.tagList.isEmpty { HStack(spacing: 5) { ForEach(track.tagList.prefix(3), id: \.self) { Text($0).font(.caption.weight(.medium)).foregroundStyle(TrailBoxColor.primaryDark).padding(.horizontal, 8).padding(.vertical, 4).background(TrailBoxColor.primary.opacity(0.12)).clipShape(Capsule()) } } }
                 Divider().overlay(TrailBoxColor.border)
                 HStack(spacing: 0) { exploreStat(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text); exploreStat(compactElevation(track.elevationGainM), "爬升", TrailBoxColor.primary); exploreStat(compactElevation(track.elevationLossM), "下降", .orange) }
@@ -153,7 +158,6 @@ struct TrackCard: View {
                 }
                 Divider().padding(.vertical, 12)
                 HStack { activityStat(DisplayFormat.distance(track.distanceM), "距离"); activityStat(durationText, "用时"); activityStat(DisplayFormat.elevation(track.elevationGainM), "爬升") }
-                HStack(spacing: 14) { Text("平均配速 \(paceText)"); Text("均心 \(averageHeartRate.map { "\($0) bpm" } ?? "-")"); Text("步频 \(averageCadence.map { "\($0) spm" } ?? "-")") }.font(.caption).foregroundStyle(TrailBoxColor.secondaryText).padding(.top, 12)
                 if let analysis = track.aiAnalysisText, !analysis.isEmpty { Button { aiExpanded.toggle() } label: { VStack(alignment: .leading, spacing: 6) { HStack { Text("AI 分析结论").font(.caption.weight(.bold)).foregroundStyle(TrailBoxColor.primaryDark); Spacer(); Text(aiExpanded ? "收起" : "展开").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }; if aiExpanded { Text(coreAnalysis(analysis)).font(.caption).foregroundStyle(TrailBoxColor.text).fixedSize(horizontal: false, vertical: true) } }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(TrailBoxColor.primary.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 10).stroke(TrailBoxColor.primary.opacity(0.16))).clipShape(RoundedRectangle(cornerRadius: 10)).padding(.top, 10) }.buttonStyle(.plain) } else { Text("AI 分析").font(.caption.weight(.semibold)).foregroundStyle(TrailBoxColor.secondaryText).padding(.horizontal, 12).padding(.vertical, 7).overlay(RoundedRectangle(cornerRadius: 9).stroke(TrailBoxColor.border)).padding(.top, 10) }
             }
         }
@@ -172,9 +176,6 @@ struct TrackCard: View {
     }
     private var activityDateAndSport: String { subtitle + (track.sport.map { " · \($0)" } ?? "") }
     private var durationText: String { guard let seconds = track.durationSec, seconds > 0 else { return "-" }; return String(format: "%d:%02d", Int(seconds) / 3600, (Int(seconds) % 3600) / 60) }
-    private var paceText: String { guard let seconds = track.durationSec, seconds > 0, track.distanceM > 0 else { return "-" }; let pace = Int(seconds / (track.distanceM / 1000)); return String(format: "%d:%02d/km", pace / 60, pace % 60) }
-    private var averageHeartRate: Int? { let values = track.points.compactMap(\.heartRate); guard !values.isEmpty else { return nil }; return values.reduce(0, +) / values.count }
-    private var averageCadence: Int? { let values = track.points.compactMap(\.cadence); guard !values.isEmpty else { return nil }; return values.reduce(0, +) / values.count }
     private func coreAnalysis(_ text: String) -> String { let sections = text.components(separatedBy: "【核心判断】"); let body = sections.count > 1 ? sections[1].components(separatedBy: "【").first ?? text : text; return body.replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
 }
 
@@ -190,16 +191,30 @@ struct RouteThumbnail: View {
             context.stroke(contour, with: .color(Color(red: 0.22, green: 0.36, blue: 0.26).opacity(0.12)), lineWidth: 1)
         }
         guard points.count > 1 else { return }
-        let lats = points.map(\.lat), lons = points.map(\.lon)
-        guard let minLat = lats.min(), let maxLat = lats.max(), let minLon = lons.min(), let maxLon = lons.max() else { return }
-        // Reserve space for the route title overlaid at the bottom of the card.
+        // Only the bottom title overlays the image; leave a small perimeter around the route elsewhere.
         let horizontalPadding: CGFloat = 20
-        let topPadding: CGFloat = 20
-        let bottomPadding: CGFloat = 54
+        let topPadding: CGFloat = 16
+        let bottomPadding: CGFloat = 56
+        let drawableWidth = max(1, size.width - 2 * horizontalPadding)
+        let drawableHeight = max(1, size.height - topPadding - bottomPadding)
+
+        // Use a single scale for both axes so changes to the card aspect ratio do not distort the route.
+        let centerLatitude = points.map(\.lat).reduce(0, +) / Double(points.count)
+        let longitudeScale = cos(centerLatitude * .pi / 180)
+        let projectedPoints = points.map { CGPoint(x: CGFloat($0.lon * longitudeScale), y: CGFloat($0.lat)) }
+        guard let minX = projectedPoints.map(\.x).min(), let maxX = projectedPoints.map(\.x).max(),
+              let minY = projectedPoints.map(\.y).min(), let maxY = projectedPoints.map(\.y).max() else { return }
+        let routeWidth = max(maxX - minX, 0.000_000_01)
+        let routeHeight = max(maxY - minY, 0.000_000_01)
+        let scale = min(drawableWidth / routeWidth, drawableHeight / routeHeight)
+        let offsetX = horizontalPadding + (drawableWidth - routeWidth * scale) / 2
+        let offsetY = topPadding + (drawableHeight - routeHeight * scale) / 2
+
         func position(_ point: TrackPoint) -> CGPoint {
-            CGPoint(
-                x: horizontalPadding + CGFloat((point.lon - minLon) / max(maxLon - minLon, 0.00001)) * (size.width - 2 * horizontalPadding),
-                y: size.height - bottomPadding - CGFloat((point.lat - minLat) / max(maxLat - minLat, 0.00001)) * (size.height - topPadding - bottomPadding)
+            let x = CGFloat(point.lon * longitudeScale)
+            return CGPoint(
+                x: offsetX + (x - minX) * scale,
+                y: offsetY + (maxY - CGFloat(point.lat)) * scale
             )
         }
         var path = Path(); path.move(to: position(points[0])); for point in points.dropFirst() { path.addLine(to: position(point)) }

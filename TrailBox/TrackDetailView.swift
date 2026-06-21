@@ -4,6 +4,201 @@ import Charts
 import AVFoundation
 import Speech
 
+private struct RouteMetrics {
+    struct GradeSample: Identifiable {
+        let id: Int
+        let distanceM: Double
+        let grade: Double
+
+        var category: GradeCategory {
+            if grade > 3 { return .climb }
+            if grade < -3 { return .descent }
+            return .flat
+        }
+    }
+
+    struct GradeSegment: Identifiable {
+        let id: Int
+        let category: GradeCategory
+        let samples: [GradeSample]
+    }
+
+    enum GradeCategory: String, CaseIterable {
+        case climb, descent, flat
+
+        var title: String { switch self { case .climb: "上坡"; case .descent: "下坡"; case .flat: "平路" } }
+        var color: Color { switch self { case .climb: .green; case .descent: .orange; case .flat: .gray } }
+    }
+
+    let elevationRange: Double?
+    let maximumGrade: Double?
+    let averageGrade: Double?
+    let difficulty: String?
+    let gradeSamples: [GradeSample]
+
+    var gradeSegments: [GradeSegment] {
+        guard let first = gradeSamples.first else { return [] }
+        var segments: [GradeSegment] = []
+        var category = first.category
+        var samples = [first]
+
+        for sample in gradeSamples.dropFirst() {
+            if sample.category == category {
+                samples.append(sample)
+            } else {
+                segments.append(GradeSegment(id: segments.count, category: category, samples: samples))
+                samples = [samples.last!, sample]
+                category = sample.category
+            }
+        }
+        segments.append(GradeSegment(id: segments.count, category: category, samples: samples))
+        return segments
+    }
+
+    init(points: [TrackPoint]) {
+        let validPoints = points.compactMap { point -> TrackPoint? in point.altitude == nil ? nil : point }
+        guard validPoints.count > 1 else {
+            elevationRange = nil; maximumGrade = nil; averageGrade = nil; difficulty = nil; gradeSamples = []
+            return
+        }
+
+        let altitudes = validPoints.compactMap(\.altitude)
+        elevationRange = altitudes.max().flatMap { maximum in altitudes.min().map { maximum - $0 } }
+
+        var distances = [0.0]
+        for index in 1..<validPoints.count {
+            let previous = CLLocation(latitude: validPoints[index - 1].lat, longitude: validPoints[index - 1].lon)
+            let current = CLLocation(latitude: validPoints[index].lat, longitude: validPoints[index].lon)
+            distances.append(distances[index - 1] + current.distance(from: previous))
+        }
+
+        var grades: [Double] = []
+        for index in validPoints.indices {
+            let centerDistance = distances[index]
+            var startIndex = index
+            var endIndex = index
+            while startIndex > 0 && centerDistance - distances[startIndex] < 100 { startIndex -= 1 }
+            while endIndex < validPoints.count - 1 && distances[endIndex] - centerDistance < 100 { endIndex += 1 }
+
+            var gradeSum = 0.0
+            var gradeCount = 0
+            for segmentIndex in (startIndex + 1)...endIndex {
+                let segmentDistance = distances[segmentIndex] - distances[segmentIndex - 1]
+                guard segmentDistance >= 3,
+                      let currentAltitude = validPoints[segmentIndex].altitude,
+                      let previousAltitude = validPoints[segmentIndex - 1].altitude else { continue }
+                gradeSum += (currentAltitude - previousAltitude) / segmentDistance * 100
+                gradeCount += 1
+            }
+            grades.append(min(35, max(-35, gradeCount > 0 ? gradeSum / Double(gradeCount) : 0)))
+        }
+
+        gradeSamples = zip(distances, grades).enumerated().map { GradeSample(id: $0.offset, distanceM: $0.element.0, grade: $0.element.1) }
+        maximumGrade = grades.dropFirst().map(\.magnitude).max()
+        averageGrade = grades.isEmpty ? nil : grades.reduce(0, +) / Double(grades.count)
+
+        let totalDistanceKm = (distances.last ?? 0) / 1_000
+        let elevationGain = zip(altitudes.dropFirst(), altitudes).reduce(0.0) { $0 + max(0, $1.0 - $1.1) }
+        guard totalDistanceKm > 0 else { difficulty = nil; return }
+        let climbDensity = elevationGain / totalDistanceKm
+        if totalDistanceKm >= 50 || climbDensity >= 140 { difficulty = "极难" }
+        else if totalDistanceKm >= 30 || climbDensity >= 90 { difficulty = "困难" }
+        else if totalDistanceKm >= 15 || climbDensity >= 50 { difficulty = "中等" }
+        else { difficulty = "简单" }
+    }
+}
+
+private struct NavigationDestination: Identifiable {
+    let id = UUID()
+    let point: TrackPoint
+    let name: String
+}
+
+private enum NavigationProvider: Identifiable {
+    case apple, amap(URL), baidu(URL), tencent(URL), google(URL)
+
+    var id: String { title }
+    var title: String { switch self { case .apple: "苹果地图"; case .amap: "高德地图"; case .baidu: "百度地图"; case .tencent: "腾讯地图"; case .google: "Google Maps" } }
+    var url: URL? { switch self { case .apple: nil; case .amap(let url), .baidu(let url), .tencent(let url), .google(let url): url } }
+}
+
+private struct NavigationProviderSheet: View {
+    let destinationName: String
+    let providers: [NavigationProvider]
+    let selectProvider: (NavigationProvider) -> Void
+
+    var body: some View {
+        if #available(iOS 16.4, *) {
+            content.presentationCornerRadius(24)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        VStack(spacing: 0) {
+            Text("导航到「\(destinationName)」")
+                .font(.subheadline)
+                .foregroundStyle(TrailBoxColor.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+
+            ForEach(providers) { provider in
+                Button { selectProvider(provider) } label: {
+                    HStack {
+                        Text(provider.title).font(.body.weight(.medium)).foregroundStyle(TrailBoxColor.text)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                    .padding(.horizontal, 20)
+                    .frame(height: 56)
+                }
+                .overlay(alignment: .bottom) { Divider().padding(.leading, 20) }
+            }
+        }
+        .presentationDetents([.height(CGFloat(54 + providers.count * 56))])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private extension CharacterSet {
+    static let urlQueryValueAllowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=?+"))
+}
+
+private func wgs84ToGCJ02(latitude: Double, longitude: Double) -> (latitude: Double, longitude: Double) {
+    guard (72.004...137.8347).contains(longitude), (0.8293...55.8271).contains(latitude) else { return (latitude, longitude) }
+    let deltaLatitude = transformLatitude(longitude - 105, latitude - 35)
+    let deltaLongitude = transformLongitude(longitude - 105, latitude - 35)
+    let radians = latitude * .pi / 180
+    let eccentricity = 0.00669342162296594323
+    let magic = 1 - eccentricity * pow(sin(radians), 2)
+    let sqrtMagic = sqrt(magic)
+    return (
+        latitude + deltaLatitude * 180 / ((6_335_552.717000426 * (1 - eccentricity)) / (magic * sqrtMagic) * .pi),
+        longitude + deltaLongitude * 180 / (6_378_245 / sqrtMagic * cos(radians) * .pi)
+    )
+}
+
+private func gcj02ToBD09(latitude: Double, longitude: Double) -> (latitude: Double, longitude: Double) {
+    let z = sqrt(longitude * longitude + latitude * latitude) + 0.00002 * sin(latitude * .pi * 3000 / 180)
+    let theta = atan2(latitude, longitude) + 0.000003 * cos(longitude * .pi * 3000 / 180)
+    return (z * sin(theta) + 0.006, z * cos(theta) + 0.0065)
+}
+
+private func transformLatitude(_ longitude: Double, _ latitude: Double) -> Double {
+    var value = -100 + 2 * longitude + 3 * latitude + 0.2 * latitude * latitude + 0.1 * longitude * latitude + 0.2 * sqrt(abs(longitude))
+    value += (20 * sin(6 * longitude * .pi) + 20 * sin(2 * longitude * .pi)) * 2 / 3
+    value += (20 * sin(latitude * .pi) + 40 * sin(latitude / 3 * .pi)) * 2 / 3
+    return value + (160 * sin(latitude / 12 * .pi) + 320 * sin(latitude * .pi / 30)) * 2 / 3
+}
+
+private func transformLongitude(_ longitude: Double, _ latitude: Double) -> Double {
+    var value = 300 + longitude + 2 * latitude + 0.1 * longitude * longitude + 0.1 * longitude * latitude + 0.1 * sqrt(abs(longitude))
+    value += (20 * sin(6 * longitude * .pi) + 20 * sin(2 * longitude * .pi)) * 2 / 3
+    value += (20 * sin(longitude * .pi) + 40 * sin(longitude / 3 * .pi)) * 2 / 3
+    return value + (150 * sin(longitude / 12 * .pi) + 300 * sin(longitude / 30 * .pi)) * 2 / 3
+}
+
 @MainActor
 final class TrackDetailViewModel: ObservableObject {
     enum State { case loading, content(Track), failed(String) }
@@ -33,6 +228,7 @@ struct TrackDetailView: View {
     @State private var showFullscreenMap = false
     @State private var showSharePreview = false
     @State private var showReport = false
+    @State private var navigationDestination: NavigationDestination?
     let trackID: String
     let isPublicSource: Bool
     let onDeleted: (() async -> Void)?
@@ -56,10 +252,18 @@ struct TrackDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .preference(key: BottomBarVisibilityPreferenceKey.self, value: false)
         .task { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) }
+        .sheet(item: $navigationDestination) { destination in
+            NavigationProviderSheet(
+                destinationName: destination.name,
+                providers: navigationProviders(for: destination),
+                selectProvider: { provider in openNavigation(provider, destination: destination) }
+            )
+        }
     }
 
     private func details(_ track: Track) -> some View {
-        ZStack(alignment: .top) {
+        let metrics = RouteMetrics(points: track.points)
+        return ZStack(alignment: .top) {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if isPublicSource {
@@ -72,17 +276,33 @@ struct TrackDetailView: View {
                 }
                 if let start = track.points.first, let end = track.points.last {
                     HStack(spacing: 12) {
-                        endpointButton(title: "起点", point: start, color: TrailBoxColor.primaryDark)
-                        endpointButton(title: "终点", point: end, color: TrailBoxColor.danger)
+                        endpointButton(title: "起点", point: start, trackName: track.name, color: TrailBoxColor.primaryDark)
+                        endpointButton(title: "终点", point: end, trackName: track.name, color: TrailBoxColor.danger)
                     }.padding(.horizontal, 16)
                 }
-                SectionCard { HStack { metric(DisplayFormat.distance(track.distanceM), "距离"); Spacer(); metric(DisplayFormat.elevation(track.elevationGainM), "爬升"); Spacer(); metric(DisplayFormat.elevation(track.elevationLossM), "下降"); Spacer(); metric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔") } }.padding(.horizontal, 16)
-                if isPublicSource { SectionCard { HStack { metric(elevationRange(track.points), "海拔落差"); Spacer(); metric(maxGrade(track.points), "最大坡度") } }.padding(.horizontal, 16) }
+                SectionCard {
+                    HStack(spacing: 0) {
+                        metric(DisplayFormat.distance(track.distanceM), "距离")
+                        metric(DisplayFormat.elevation(track.elevationGainM), "爬升")
+                        metric(DisplayFormat.elevation(track.elevationLossM), "下降")
+                        metric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔")
+                    }
+                }.padding(.horizontal, 16)
+                if isPublicSource {
+                    SectionCard {
+                        HStack(spacing: 0) {
+                            metric(metrics.elevationRange.map(DisplayFormat.elevation) ?? "-", "海拔落差")
+                            metric(metrics.maximumGrade.map(formatGrade) ?? "-", "最大坡度")
+                            metric(metrics.averageGrade.map(formatGrade) ?? "-", "平均坡度")
+                            difficultyMetric(metrics.difficulty)
+                        }
+                    }.padding(.horizontal, 16)
+                }
                 ElevationChart(points: track.points, title: "海拔剖面").padding(.horizontal, 16)
                 if !isPublicSource {
                     ActivityCharts(points: track.points).padding(.horizontal, 16)
                 } else {
-                    GradeChart(points: track.points).padding(.horizontal, 16)
+                    GradeChart(metrics: metrics).padding(.horizontal, 16)
                 }
                 if track.city != nil || !track.tagList.isEmpty { SectionCard { VStack(alignment: .leading, spacing: 10) { if let city = track.city { HStack { Text("城市").foregroundStyle(TrailBoxColor.secondaryText); Spacer(); Text(city).fontWeight(.semibold) } }; if !track.tagList.isEmpty { Divider(); VStack(alignment: .leading, spacing: 6) { Text("标签").font(.headline); Text(track.tagList.joined(separator: " · ")).font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) } } } }.padding(.horizontal, 16) }
             }.padding(.bottom, 24)
@@ -161,7 +381,14 @@ struct TrackDetailView: View {
         .background(.white.shadow(.drop(color: .black.opacity(0.08), radius: 8, y: -3)))
     }
 
-    private func metric(_ value: String, _ label: String) -> some View { VStack(alignment: .leading, spacing: 3) { Text(value).font(.headline).foregroundStyle(TrailBoxColor.text); Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText) } }
+    private func metric(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value).font(.headline).foregroundStyle(TrailBoxColor.text).lineLimit(1).minimumScaleFactor(0.8)
+            Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText).lineLimit(1)
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+    }
     private func activityHero(_ track: Track) -> some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 12) {
@@ -189,6 +416,15 @@ struct TrackDetailView: View {
                         .padding(12)
                         .background(TrailBoxColor.background)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    if let summary = aiAnalysis?.cardSummary, !summary.isEmpty {
+                        Text(summary)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(TrailBoxColor.text)
+                            .lineSpacing(3)
+                            .padding(12)
+                            .background(TrailBoxColor.primary.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     Divider()
                     PwaAIAnalysisText(text: rawAnalysis)
@@ -249,20 +485,63 @@ struct TrackDetailView: View {
                 }
             }
     }
-    private func elevationRange(_ points: [TrackPoint]) -> String { let values = points.compactMap(\.altitude); guard let min = values.min(), let max = values.max() else { return "-" }; return DisplayFormat.elevation(max - min) }
-    private func maxGrade(_ points: [TrackPoint]) -> String { guard let value = points.compactMap(\.grade).max() else { return "-" }; return String(format: "%.1f%%", value) }
+    private func formatGrade(_ grade: Double) -> String { String(format: "%+.1f%%", grade) }
 
-    private func endpointButton(title: String, point: TrackPoint, color: Color) -> some View {
-        Button { openInMaps(point, name: "\(trackID) \(title)") } label: {
+    private func difficultyMetric(_ difficulty: String?) -> some View {
+        VStack(spacing: 3) {
+            Text(difficulty ?? "-")
+                .font(.headline).lineLimit(1).minimumScaleFactor(0.8)
+                .foregroundStyle(difficultyColor(difficulty))
+            Text("难度评级").font(.caption).foregroundStyle(TrailBoxColor.secondaryText).lineLimit(1)
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func difficultyColor(_ difficulty: String?) -> Color {
+        switch difficulty {
+        case "中等": .orange
+        case "困难": .red
+        case "极难": .purple
+        default: TrailBoxColor.primaryDark
+        }
+    }
+
+    private func endpointButton(title: String, point: TrackPoint, trackName: String, color: Color) -> some View {
+        Button { navigationDestination = NavigationDestination(point: point, name: "\(trackName) \(title)") } label: {
             HStack(spacing: 8) { Circle().fill(color).frame(width: 10, height: 10); VStack(alignment: .leading, spacing: 2) { Text(title).font(.caption).foregroundStyle(TrailBoxColor.secondaryText); Text("导航").font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.text) }; Spacer(); Image(systemName: "arrow.triangle.turn.up.right.diamond").foregroundStyle(TrailBoxColor.primaryDark) }
                 .padding(12).background(.white).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(TrailBoxColor.border))
         }
     }
 
-    private func openInMaps(_ point: TrackPoint, name: String) {
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: point.lat, longitude: point.lon)))
-        item.name = name
-        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+    private func navigationProviders(for destination: NavigationDestination) -> [NavigationProvider] {
+        let point = destination.point
+        let name = destination.name.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? destination.name
+        let gcj02 = wgs84ToGCJ02(latitude: point.lat, longitude: point.lon)
+        let bd09 = gcj02ToBD09(latitude: gcj02.latitude, longitude: gcj02.longitude)
+        let amapAppURL = URL(string: "amapuri://route/plan/?dlat=\(gcj02.latitude)&dlon=\(gcj02.longitude)&dname=\(name)&dev=0&t=0")!
+        let providers: [NavigationProvider] = [
+            .apple,
+            UIApplication.shared.canOpenURL(amapAppURL) ? .amap(amapAppURL) : nil,
+            URL(string: "baidumap://map/direction?destination=latlng:\(bd09.latitude),\(bd09.longitude)%7Cname:\(name)&mode=driving").flatMap { UIApplication.shared.canOpenURL($0) ? .baidu($0) : nil },
+            URL(string: "qqmap://map/routeplan?type=drive&to=\(name)&tocoord=\(gcj02.latitude),\(gcj02.longitude)").flatMap { UIApplication.shared.canOpenURL($0) ? .tencent($0) : nil },
+            URL(string: "comgooglemaps://?daddr=\(point.lat),\(point.lon)&directionsmode=driving").flatMap { UIApplication.shared.canOpenURL($0) ? .google($0) : nil }
+        ].compactMap { $0 }
+
+        if providers.count > 1 { return providers }
+        let amapWebURL = URL(string: "https://uri.amap.com/navigation?to=\(gcj02.longitude),\(gcj02.latitude),\(name)&mode=car&coordinate=gaode")!
+        return [.apple, .amap(amapWebURL)]
+    }
+
+    private func openNavigation(_ provider: NavigationProvider, destination: NavigationDestination) {
+        navigationDestination = nil
+        if case .apple = provider {
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: destination.point.lat, longitude: destination.point.lon)))
+            item.name = destination.name
+            item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+        } else if let url = provider.url {
+            UIApplication.shared.open(url)
+        }
     }
 
     private func download(_ track: Track) {
@@ -405,13 +684,34 @@ private struct PwaAIAnalysisText: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                VStack(alignment: .leading, spacing: 4) {
-                    if let title = block.title { Text("【\(title)】").font(.subheadline.weight(.bold)) }
-                    Text(block.content).font(.subheadline).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                VStack(alignment: .leading, spacing: 8) {
+                    if let title = block.title {
+                        Text("【\(title)】").font(.system(.headline, design: .rounded, weight: .bold)).foregroundStyle(TrailBoxColor.text)
+                    }
+                    contentView(for: block)
+                }
+                if index < blocks.count - 1 { Divider().overlay(TrailBoxColor.border) }
+            }
+        }
+    }
+
+    @ViewBuilder private func contentView(for block: (title: String?, content: String)) -> some View {
+        if let title = block.title, title.contains("改进") || title.contains("怎么改") {
+            let items = block.content.split(whereSeparator: { $0.isNewline }).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .top, spacing: 9) {
+                        Text("\(index + 1)").font(.caption.weight(.bold)).foregroundStyle(.white).frame(width: 20, height: 20).background(TrailBoxColor.primary).clipShape(Circle())
+                        Text(item.replacingOccurrences(of: #"^\d+[\.、]\s*"#, with: "", options: .regularExpression)).font(.subheadline).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
+        } else if let title = block.title, title == "注意" || title.contains("风险") {
+            Text(block.content).font(.subheadline).lineSpacing(4).fixedSize(horizontal: false, vertical: true).padding(12).background(Color.orange.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 10))
+        } else {
+            Text(block.content).font(.subheadline).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -585,22 +885,188 @@ private struct ElevationChart: View {
 }
 
 private struct GradeChart: View {
-    let points: [TrackPoint]
+    let metrics: RouteMetrics
+
     var body: some View {
-        SectionCard { VStack(alignment: .leading, spacing: 10) { Text("坡度剖面").font(.headline); Chart(Array(points.enumerated()), id: \.offset) { index, point in if let grade = point.grade { LineMark(x: .value("点", index), y: .value("坡度", grade)).foregroundStyle(.orange) } }.chartXAxis(.hidden).frame(height: 160) } }
+        SectionCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("坡度剖面").font(.headline)
+                if metrics.gradeSamples.isEmpty {
+                    Text("暂无可用于计算坡度的海拔数据").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText).frame(maxWidth: .infinity, minHeight: 100)
+                } else {
+                    HStack(spacing: 14) {
+                        ForEach(RouteMetrics.GradeCategory.allCases, id: \.self) { category in
+                            HStack(spacing: 5) {
+                                Circle().fill(category.color).frame(width: 7, height: 7)
+                                Text(category.title).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                            }
+                        }
+                    }
+                    Chart {
+                        RuleMark(y: .value("零坡度", 0)).foregroundStyle(TrailBoxColor.border)
+                        ForEach(metrics.gradeSegments) { segment in
+                            ForEach(segment.samples) { sample in
+                                LineMark(
+                                    x: .value("距离", sample.distanceM / 1_000),
+                                    y: .value("坡度", sample.grade),
+                                    series: .value("区段", segment.id)
+                                )
+                                .foregroundStyle(segment.category.color)
+                                .interpolationMethod(.catmullRom)
+                            }
+                        }
+                    }
+                    .chartXAxisLabel("距离 (km)")
+                    .chartYAxisLabel("坡度 (%)")
+                    .chartLegend(.hidden)
+                    .frame(height: 180)
+                }
+            }
+        }
     }
 }
 
 private struct ActivityCharts: View {
     let points: [TrackPoint]
+
+    private let heartRateSamples: [ActivityChartSample]
+    private let paceSamples: [ActivityChartSample]
+
+    init(points: [TrackPoint]) {
+        self.points = points
+        heartRateSamples = ActivityChartSampleBuilder.heartRateSamples(from: points)
+        paceSamples = ActivityChartSampleBuilder.paceSamples(from: points)
+    }
+
     var body: some View {
         VStack(spacing: 16) {
-            chart(title: "心率变化", values: points.map(\.heartRate).map { $0.map(Double.init) }, color: .red, unit: "bpm")
-            chart(title: "配速变化", values: points.map(\.speed), color: .blue, unit: "km/h")
+            chart(title: "心率变化", samples: heartRateSamples, color: .red, unit: "bpm")
+            chart(title: "配速变化", samples: paceSamples, color: .blue, unit: "min/km")
         }
     }
-    private func chart(title: String, values: [Double?], color: Color, unit: String) -> some View {
-        SectionCard { VStack(alignment: .leading, spacing: 10) { Text(title).font(.headline); Chart(Array(values.enumerated()), id: \.offset) { index, value in if let value { LineMark(x: .value("点", index), y: .value(unit, value)).foregroundStyle(color).interpolationMethod(.catmullRom) } }.chartXAxis(.hidden).frame(height: 160) } }
+
+    private func chart(title: String, samples: [ActivityChartSample], color: Color, unit: String) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title).font(.headline)
+                if samples.isEmpty {
+                    Text("暂无可用数据").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText).frame(maxWidth: .infinity, minHeight: 100)
+                } else {
+                    Chart(samples) { sample in
+                        LineMark(
+                            x: .value("距离", sample.distanceKM),
+                            y: .value(unit, sample.value)
+                        )
+                        .foregroundStyle(color)
+                        .interpolationMethod(.monotone)
+                    }
+                    .chartXAxisLabel("距离 (km)")
+                    .chartYAxisLabel(unit)
+                    .frame(height: 160)
+                }
+            }
+        }
+    }
+}
+
+private struct ActivityChartSample: Identifiable {
+    let id: Int
+    let distanceKM: Double
+    let value: Double
+}
+
+/// Produces display-only samples. Raw track points remain available to the rest of the detail view.
+private enum ActivityChartSampleBuilder {
+    private static let maximumSampleCount = 120
+
+    static func heartRateSamples(from points: [TrackPoint]) -> [ActivityChartSample] {
+        let samples = bucketedSamples(from: points) { point in
+            guard let heartRate = point.heartRate, (40...230).contains(heartRate) else { return nil }
+            return Double(heartRate)
+        }
+        return exponentiallySmoothed(samples, alpha: 0.35)
+    }
+
+    static func paceSamples(from points: [TrackPoint]) -> [ActivityChartSample] {
+        let samples = bucketedSamples(from: points) { point in
+            // FIT/GPX speed is meters per second. Ignore stopped and implausibly fast readings.
+            guard let speed = point.speed, speed >= 0.4, speed <= 8.5 else { return nil }
+            let minutesPerKilometer = 1_000 / speed / 60
+            return (2...42).contains(minutesPerKilometer) ? minutesPerKilometer : nil
+        }
+        return medianSmoothed(samples, windowSize: 7)
+    }
+
+    private static func bucketedSamples(
+        from points: [TrackPoint],
+        value: (TrackPoint) -> Double?
+    ) -> [ActivityChartSample] {
+        guard points.count > 1 else { return [] }
+        let distances = cumulativeDistances(for: points)
+        guard let totalDistance = distances.last, totalDistance > 0 else { return [] }
+
+        // 100 m buckets remove high-frequency jitter. For very long routes the bucket grows
+        // just enough to cap rendering work at roughly 120 points.
+        let bucketWidth = max(100, totalDistance / Double(maximumSampleCount))
+        var buckets: [Int: [(distance: Double, value: Double)]] = [:]
+
+        for (point, distance) in zip(points, distances) {
+            guard let metric = value(point) else { continue }
+            let bucket = Int(distance / bucketWidth)
+            buckets[bucket, default: []].append((distance, metric))
+        }
+
+        return buckets.keys.sorted().compactMap { bucket in
+            guard let values = buckets[bucket], !values.isEmpty else { return nil }
+            let distances = values.map(\.distance).sorted()
+            let metrics = values.map(\.value).sorted()
+            return ActivityChartSample(
+                id: bucket,
+                distanceKM: median(of: distances) / 1_000,
+                value: median(of: metrics)
+            )
+        }
+    }
+
+    private static func cumulativeDistances(for points: [TrackPoint]) -> [Double] {
+        let recorded = points.compactMap(\.distance)
+        if recorded.count == points.count,
+           let first = recorded.first,
+           let last = recorded.last,
+           last > first,
+           zip(recorded, recorded.dropFirst()).allSatisfy({ $0 <= $1 }) {
+            return recorded.map { $0 - first }
+        }
+
+        var result = [0.0]
+        for (previous, current) in zip(points, points.dropFirst()) {
+            let from = CLLocation(latitude: previous.lat, longitude: previous.lon)
+            let to = CLLocation(latitude: current.lat, longitude: current.lon)
+            result.append(result.last! + from.distance(from: to))
+        }
+        return result
+    }
+
+    private static func exponentiallySmoothed(_ samples: [ActivityChartSample], alpha: Double) -> [ActivityChartSample] {
+        guard var previous = samples.first?.value else { return [] }
+        return samples.map { sample in
+            previous += alpha * (sample.value - previous)
+            return ActivityChartSample(id: sample.id, distanceKM: sample.distanceKM, value: previous)
+        }
+    }
+
+    private static func medianSmoothed(_ samples: [ActivityChartSample], windowSize: Int) -> [ActivityChartSample] {
+        let radius = windowSize / 2
+        return samples.indices.map { index in
+            let lower = max(samples.startIndex, index - radius)
+            let upper = min(samples.endIndex, index + radius + 1)
+            return ActivityChartSample(id: samples[index].id, distanceKM: samples[index].distanceKM, value: median(of: Array(samples[lower..<upper].map(\.value))))
+        }
+    }
+
+    private static func median(of values: [Double]) -> Double {
+        let middle = values.count / 2
+        return values.count.isMultiple(of: 2) ? (values[middle - 1] + values[middle]) / 2 : values[middle]
     }
 }
 
