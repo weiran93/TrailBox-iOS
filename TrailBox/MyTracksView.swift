@@ -1,24 +1,58 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AVKit
 
 @MainActor
 final class MyTracksViewModel: ObservableObject {
     enum State { case loading, content, empty, failed(String) }
     @Published var state: State = .loading
     @Published var tracks: [Track] = []
-    func load(token: String) async { state = .loading; do { tracks = try await APIClient.shared.request("/tracks/my?include_points=true", token: token); state = tracks.isEmpty ? .empty : .content } catch { state = .failed(error.localizedDescription) } }
+    @Published private(set) var isLoadingMore = false
+    @Published private(set) var canLoadMore = true
+
+    func load(token: String, isRefresh: Bool = false) async {
+        guard isRefresh || tracks.isEmpty else { return }
+        state = .loading
+        tracks = []
+        canLoadMore = true
+        await loadPage(token: token, reset: true)
+    }
+
+    func loadMore(token: String) async {
+        guard case .content = state, canLoadMore, !isLoadingMore else { return }
+        await loadPage(token: token, reset: false)
+    }
+
+    private func loadPage(token: String, reset: Bool) async {
+        if !reset { isLoadingMore = true }
+        do {
+            let offset = reset ? 0 : tracks.count
+            let page: [Track] = try await APIClient.shared.request("/tracks/my?include_points=true&limit=20&offset=\(offset)", token: token)
+            if reset { tracks = page }
+            else {
+                let existingIDs = Set(tracks.map(\.id))
+                tracks.append(contentsOf: page.filter { !existingIDs.contains($0.id) })
+            }
+            canLoadMore = page.count == 20 && !page.isEmpty
+            state = tracks.isEmpty ? .empty : .content
+        } catch {
+            if reset { state = .failed(error.localizedDescription) }
+        }
+        isLoadingMore = false
+    }
 }
 
 struct MyTracksView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = MyTracksViewModel()
-    @State private var showUpload = false
     @State private var showSettings = false
-    @State private var navigationPath = NavigationPath()
+    @State private var navigationPath: [Destination] = []
     @State private var statsRange: StatsRange = .month
 
     private enum StatsRange: String, CaseIterable, Identifiable { case month = "本月", all = "全部"; var id: String { rawValue } }
+    private enum Destination: Hashable { case upload, track(String) }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -26,27 +60,63 @@ struct MyTracksView: View {
                 HStack {
                     Text("我的记录").font(.title2.bold()).foregroundStyle(TrailBoxColor.text)
                     Spacer()
-                    Button { showUpload = true } label: { Text("上传记录").font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.primaryDark) }
+                    Button {
+                        bottomBarVisibility.isVisible = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            navigationPath.append(Destination.upload)
+                        }
+                    } label: { Text("上传记录").font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.primaryDark) }
                     Button { showSettings = true } label: { Image(systemName: "gearshape").foregroundStyle(TrailBoxColor.text).padding(.leading, 12) }
                 }.padding(.horizontal, 16).frame(height: 56).background(.white)
                 switch viewModel.state {
                 case .loading: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .empty: EmptyStateView(title: "还没有轨迹", systemImage: "figure.run", message: "从运动 App 分享 .fit 或 .gpx 文件到小野box")
                 case .failed(let message): EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: message)
-                case .content: ScrollView { LazyVStack(spacing: 12) { summary; ForEach(viewModel.tracks) { track in NavigationLink { TrackDetailView(trackID: track.id, isPublicSource: false, onDeleted: refreshTracks) } label: { TrackCard(track: track, isActivity: true) }.buttonStyle(.plain) } }.padding(16) }
+                case .content:
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            summary
+                            ForEach(viewModel.tracks) { track in
+                                NavigationLink {
+                                    TrackDetailView(trackID: track.id, isPublicSource: false, onDeleted: refreshTracks)
+                                } label: {
+                                    TrackCard(track: track, isActivity: true)
+                                }
+                                .buttonStyle(.plain)
+                                .onAppear {
+                                    if track.id == viewModel.tracks.last?.id, let token = session.token {
+                                        Task { await viewModel.loadMore(token: token) }
+                                    }
+                                }
+                            }
+                            if viewModel.isLoadingMore {
+                                ProgressView().padding(.vertical, 8)
+                            }
+                        }
+                        .padding(16)
+                    }
+                    // Inset the scrollable content so it remains visible above the custom bottom bar.
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        Color.clear.frame(height: RootView.bottomBarHeight)
+                    }
                 }
             }.background(TrailBoxColor.background).toolbar(.hidden, for: .navigationBar)
                 .task { if let token = session.token { await viewModel.load(token: token) } else { showAuthentication = true } }
-                .sheet(isPresented: $showUpload) {
-                    UploadTrackView { track in
-                        if let token = session.token { Task { await viewModel.load(token: token) } }
-                        navigationPath.append(track.id)
+                .sheet(isPresented: $showSettings) { SettingsView() }
+                .navigationDestination(for: Destination.self) { destination in
+                    switch destination {
+                    case .upload:
+                        UploadTrackView { track in
+                            if let token = session.token { Task { await viewModel.load(token: token, isRefresh: true) } }
+                            navigationPath = [.track(track.id)]
+                        }
+                    case .track(let trackID):
+                        TrackDetailView(trackID: trackID, isPublicSource: false, onDeleted: refreshTracks)
                     }
                 }
-                .sheet(isPresented: $showSettings) { SettingsView() }
-                .navigationDestination(for: String.self) { trackID in
-                    TrackDetailView(trackID: trackID, isPublicSource: false, onDeleted: refreshTracks)
-                }
+        }
+        .onChange(of: navigationPath) { newValue in
+            bottomBarVisibility.isVisible = newValue.isEmpty
         }
     }
 
@@ -76,7 +146,7 @@ struct MyTracksView: View {
     private func metric(_ value: String, _ label: String) -> some View { VStack(alignment: .leading) { Text(value).font(.headline); Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText) } }
     private func refreshTracks() async {
         guard let token = session.token else { return }
-        await viewModel.load(token: token)
+        await viewModel.load(token: token, isRefresh: true)
     }
 }
 
@@ -89,62 +159,72 @@ struct SettingsView: View {
     @State private var accountActionMessage: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("用户信息") {
-                    LabeledContent("公开 ID", value: session.user?.publicID ?? "-")
-                    LabeledContent("用户名", value: session.user?.username ?? "-")
-                }
-                if session.user?.isAdmin == true {
-                    Section("管理后台") {
-                        NavigationLink("管理后台") { AdminDashboardView() }
-                        NavigationLink("AI 服务配置") { AdminAISettingsView() }
-                        NavigationLink("内容举报") { AdminReportsView() }
+        ZStack {
+            NavigationStack {
+                Form {
+                    Section("用户信息") {
+                        LabeledContent("公开 ID", value: session.user?.publicID ?? "-")
+                        LabeledContent("用户名", value: session.user?.username ?? "-")
                     }
-                }
-                Section("个人资料") {
-                    NavigationLink {
-                        NicknameSettingsView(nickname: session.user?.nickname ?? "")
-                    } label: {
-                        LabeledContent("昵称", value: session.user?.nickname ?? "未设置")
-                    }
-                }
-                Section("AI 分析") {
-                    NavigationLink {
-                        DeepSeekKeySettingsView()
-                    } label: {
-                        HStack {
-                            Text("DeepSeek API Key")
-                            Spacer()
-                            Text(session.user?.hasDeepSeekAPIKey == true ? "已保存" : "未配置")
-                                .foregroundStyle(session.user?.hasDeepSeekAPIKey == true ? .green : TrailBoxColor.secondaryText)
+                    if session.user?.isAdmin == true {
+                        Section("管理后台") {
+                            NavigationLink("管理后台") { AdminDashboardView() }
+                            NavigationLink("AI 服务配置") { AdminAISettingsView() }
+                            NavigationLink("内容举报") { AdminReportsView() }
                         }
                     }
-                }
-                Section("账户安全") {
-                    NavigationLink("修改密码") { ChangePasswordView() }
-                    Button("删除账户", role: .destructive) { showDeleteConfirmation = true }
-                }
-                Section("关于与支持") {
-                    NavigationLink("隐私政策") { PrivacyPolicyView() }
-                    Button("联系我们") {
-                        if let url = URL(string: "mailto:\(AppConfiguration.supportEmail)") { openURL(url) }
+                    Section("个人资料") {
+                        NavigationLink {
+                            NicknameSettingsView(nickname: session.user?.nickname ?? "")
+                        } label: {
+                            LabeledContent("昵称", value: session.user?.nickname ?? "未设置")
+                        }
                     }
+                    Section("AI 分析") {
+                        NavigationLink {
+                            DeepSeekKeySettingsView()
+                        } label: {
+                            HStack {
+                                Text("DeepSeek API Key")
+                                Spacer()
+                                Text(session.user?.hasDeepSeekAPIKey == true ? "已保存" : "未配置")
+                                    .foregroundStyle(session.user?.hasDeepSeekAPIKey == true ? .green : TrailBoxColor.secondaryText)
+                            }
+                        }
+                    }
+                    Section("账户安全") {
+                        NavigationLink("修改密码") { ChangePasswordView() }
+                        Button("删除账户", role: .destructive) { showDeleteConfirmation = true }
+                    }
+                    Section {
+                        NavigationLink("隐私政策") { PrivacyPolicyView() }
+                        Button("联系我们") {
+                            if let url = URL(string: "mailto:\(AppConfiguration.supportEmail)") { openURL(url) }
+                        }
+                    } header: {
+                        Text("关于与支持")
+                    } footer: {
+                        HStack {
+                            Spacer()
+                            Text("v1.6.1").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                            Spacer()
+                        }
+                    }
+                    Section { Button("退出登录", role: .destructive) { session.logout(); dismiss() } }
                 }
-                Section { Button("退出登录", role: .destructive) { session.logout(); dismiss() } }
+                .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
+                .confirmationDialog("永久删除账户？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+                    Button(isDeletingAccount ? "删除中…" : "删除账户及所有数据", role: .destructive) { deleteAccount() }
+                        .disabled(isDeletingAccount)
+                    Button("取消", role: .cancel) { }
+                } message: {
+                    Text("你的私有记录、已公开路线、轨迹文件和 AI 分析将被永久删除，且无法恢复。")
+                }
+                .alert("账户操作", isPresented: Binding(get: { accountActionMessage != nil }, set: { if !$0 { accountActionMessage = nil } })) {
+                    Button("确定", role: .cancel) { }
+                } message: { Text(accountActionMessage ?? "") }
             }
-            .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
-            .confirmationDialog("永久删除账户？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-                Button(isDeletingAccount ? "删除中…" : "删除账户及所有数据", role: .destructive) { deleteAccount() }
-                    .disabled(isDeletingAccount)
-                Button("取消", role: .cancel) { }
-            } message: {
-                Text("你的私有记录、已公开路线、轨迹文件和 AI 分析将被永久删除，且无法恢复。")
-            }
-            .alert("账户操作", isPresented: Binding(get: { accountActionMessage != nil }, set: { if !$0 { accountActionMessage = nil } })) {
-                Button("确定", role: .cancel) { }
-            } message: { Text(accountActionMessage ?? "") }
         }
     }
 
@@ -639,12 +719,13 @@ struct AdminReportsView: View {
 
 struct UploadTrackView: View {
     @EnvironmentObject private var session: SessionStore
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     let didUpload: (Track) -> Void
     @State private var showFileImporter = false
     @State private var selectedFile: URL?
     @State private var name = ""
     @State private var city = "北京"
+    @State private var cityOptions = ["北京"]
     @State private var tags = ""
     @State private var sport = "越野跑"
     @State private var isPublic = true
@@ -653,50 +734,96 @@ struct UploadTrackView: View {
     @State private var isSuggestingMetadata = false
     @State private var errorMessage: String?
     @State private var suggestionStatus = ""
+    @State private var nameWasEdited = false
+    @State private var cityWasEdited = false
+    @State private var tagsWereEdited = false
+    @State private var sportWasEdited = false
+    @State private var suggestionRequestID = UUID()
+    @State private var tutorialPlayer = AVPlayer(url: URL(string: "https://runfast.fun/assets/videos/coros-fit-export.mp4")!)
 
-    private var isBusy: Bool { isUploading || isSuggestingMetadata }
+    private var allowedFileTypes: [UTType] {
+        ["fit", "gpx", "kml"].compactMap { UTType(filenameExtension: $0) } + [.data]
+    }
+
+    private var uploadButtonTitle: String { isUploading ? "上传中…" : "上传运动记录" }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Form {
-                    Section("选择文件") {
-                        Button(selectedFile?.lastPathComponent ?? "选择 FIT / GPX / KML 文件") { showFileImporter = true }
-                        Text("FIT 文件作为个人运动记录保存；公开后仅展示路线基础信息。").font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
-                        if !suggestionStatus.isEmpty { Text(suggestionStatus).font(.footnote).foregroundStyle(TrailBoxColor.secondaryText) }
+        ZStack {
+            Form {
+                Section("选择文件") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Button { showFileImporter = true } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "doc.badge.plus").font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(selectedFile?.lastPathComponent ?? "选择 FIT 文件").font(.subheadline.weight(.bold))
+                                    Text(selectedFile == nil ? "支持 .fit、.gpx、.kml" : "点击更换文件").font(.caption)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                            }
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(TrailBoxColor.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(TrailBoxColor.primary.opacity(0.35)))
+                        }
+                        .buttonStyle(.plain)
+                        Text("FIT 文件会作为个人运动记录保存；公开后只贡献路线基础信息。")
+                            .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
                     }
-                    Section("记录信息") {
-                        TextField("记录名称", text: $name)
-                        TextField("城市", text: $city)
-                        TextField("标签（逗号分隔）", text: $tags)
-                        Picker("运动类型", selection: $sport) { Text("越野跑").tag("越野跑"); Text("徒步").tag("徒步") }
-                    }
-                    Section("公开设置") {
-                        Toggle("公开为探索路线", isOn: $isPublic)
-                        Toggle("展示贡献者昵称", isOn: $showContributor)
-                    }
-                    if let errorMessage { Section { Text(errorMessage).foregroundStyle(TrailBoxColor.danger) } }
+                    uploadGuide
                 }
-                .disabled(isBusy)
-
-                if isSuggestingMetadata { metadataLoadingOverlay }
+                Section("记录信息") {
+                    TextField("记录名称", text: editedBinding($name, didEdit: $nameWasEdited))
+                    Picker("城市", selection: editedBinding($city, didEdit: $cityWasEdited)) {
+                        ForEach(cityOptions, id: \.self) { Text($0).tag($0) }
+                    }
+                    TextField("标签（逗号分隔）", text: editedBinding($tags, didEdit: $tagsWereEdited))
+                    Picker("运动类型", selection: editedBinding($sport, didEdit: $sportWasEdited)) {
+                        Text("越野跑").tag("越野跑")
+                        Text("徒步").tag("徒步")
+                    }
+                    if !suggestionStatus.isEmpty {
+                        HStack(spacing: 7) {
+                            if isSuggestingMetadata { ProgressView().controlSize(.small) }
+                            Text(suggestionStatus)
+                        }
+                        .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                }
+                Section("公开设置") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        settingToggle("公开为探索路线", description: "上传成功后出现在探索路线，只展示路线基础信息。", isOn: $isPublic)
+                        settingToggle("在探索路线展示贡献者昵称", description: "公开卡片中显示你的昵称，方便标记路线来源。", isOn: $showContributor)
+                    }
+                }
+                if let errorMessage { Section { Text(errorMessage).foregroundStyle(TrailBoxColor.danger) } }
             }
+            .disabled(isUploading)
             .navigationTitle("上传记录").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("取消") { dismiss() }.disabled(isBusy) }
-                ToolbarItem(placement: .topBarTrailing) { Button(isUploading ? "上传中…" : "上传") { upload() }.disabled(selectedFile == nil || isBusy) }
+            .safeAreaInset(edge: .bottom) {
+                let isDisabled = selectedFile == nil || isUploading || isSuggestingMetadata
+                Button(uploadButtonTitle) { if !isDisabled { upload() } }
+                    .font(.headline.weight(.bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).frame(height: 52)
+                    .background(isDisabled ? TrailBoxColor.secondaryText : TrailBoxColor.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: TrailBoxColor.primary.opacity(0.25), radius: 8, y: 4)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.white)
+                    .overlay(alignment: .top) { Divider().overlay(TrailBoxColor.border) }
+                    .allowsHitTesting(!isDisabled)
+                    .ignoresSafeArea(.container, edges: .bottom)
             }
-            .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.data]) { result in
+            .fileImporter(isPresented: $showFileImporter, allowedContentTypes: allowedFileTypes) { result in
                 guard case .success(let url) = result else { return }
-                selectedFile = url
-                name = url.deletingPathExtension().lastPathComponent
-                city = ""
-                tags = ""
-                sport = "越野跑"
-                errorMessage = nil
-                suggest(for: url)
+                selectFile(url)
             }
+            if isUploading { uploadingOverlay }
         }
+        .background(TrailBoxColor.background)
+        .onAppear { bottomBarVisibility.isVisible = false }
+        .onDisappear { bottomBarVisibility.isVisible = true }
     }
 
     private func upload() {
@@ -706,46 +833,124 @@ struct UploadTrackView: View {
             let access = selectedFile.startAccessingSecurityScopedResource()
             defer { if access { selectedFile.stopAccessingSecurityScopedResource() } }
             do {
-                let track = try await APIClient.shared.uploadTrack(fileURL: selectedFile, name: name.isEmpty ? selectedFile.deletingPathExtension().lastPathComponent : name, city: city, tags: tags, sport: sport, isPublic: isPublic, showContributor: showContributor, token: token)
-                didUpload(track); dismiss()
+                let submittedName = nameWasEdited ? name.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+                let track = try await APIClient.shared.uploadTrack(fileURL: selectedFile, name: submittedName, city: city, tags: normalizedTags, sport: sport, isPublic: isPublic, showContributor: showContributor, token: token)
+                didUpload(track)
             } catch { errorMessage = error.localizedDescription }
             isUploading = false
         }
     }
 
     private func suggest(for fileURL: URL) {
+        let requestID = UUID()
+        suggestionRequestID = requestID
         isSuggestingMetadata = true
-        suggestionStatus = "正在根据轨迹位置推荐路线信息…"
+        suggestionStatus = "正在根据轨迹位置识别路线名称、城市和标签…"
         Task {
             let access = fileURL.startAccessingSecurityScopedResource()
             defer { if access { fileURL.stopAccessingSecurityScopedResource() } }
             do {
                 let suggestion = try await APIClient.shared.suggestMetadata(fileURL: fileURL, token: session.token)
-                if let name = suggestion.name { self.name = name }
-                if let city = suggestion.city { self.city = city }
-                if let tags = suggestion.tags, !tags.isEmpty { self.tags = tags.joined(separator: ",") }
-                if let sport = suggestion.sport, ["越野跑", "徒步"].contains(sport) { self.sport = sport }
-                suggestionStatus = "已自动推荐路线信息，可继续手动修改。"
-            } catch { suggestionStatus = "暂时无法自动推荐，可手动填写。" }
-            isSuggestingMetadata = false
+                guard requestID == suggestionRequestID else { return }
+                var applied: [String] = []
+                if let name = suggestion.name, !nameWasEdited { self.name = name; applied.append("路线：\(name)") }
+                if let city = suggestion.city, !cityWasEdited {
+                    if !cityOptions.contains(city) { cityOptions.append(city) }
+                    self.city = city
+                    applied.append("城市：\(city)")
+                }
+                if let tags = suggestion.tags, !tags.isEmpty, !tagsWereEdited { self.tags = tags.joined(separator: ","); applied.append("标签：\(tags.joined(separator: ","))") }
+                if let sport = suggestion.sport, ["越野跑", "徒步"].contains(sport), !sportWasEdited { self.sport = sport; applied.append("运动类型：\(sport)") }
+                suggestionStatus = applied.isEmpty ? "未匹配到可自动填写的信息，可手动填写后上传。" : "已自动推荐 \(applied.joined(separator: "，"))"
+            } catch {
+                guard requestID == suggestionRequestID else { return }
+                suggestionStatus = "暂时无法自动推荐标签，可手动填写后上传。"
+            }
+            if requestID == suggestionRequestID { isSuggestingMetadata = false }
         }
     }
 
-    private var metadataLoadingOverlay: some View {
+    private var normalizedTags: String {
+        var seen = Set<String>()
+        return tags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: ",")
+    }
+
+    private var uploadingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.18).ignoresSafeArea()
-            VStack(spacing: 12) {
-                ProgressView().controlSize(.large)
-                Text("正在分析路线信息…").font(.headline)
-                Text("正在识别记录名称、城市和标签")
-                    .font(.footnote)
-                    .foregroundStyle(TrailBoxColor.secondaryText)
+            TrailBoxColor.background.ignoresSafeArea()
+            VStack(spacing: 18) {
+                ProgressView().controlSize(.large).tint(TrailBoxColor.primaryDark)
+                VStack(spacing: 7) {
+                    Text("正在上传运动记录").font(.title3.weight(.bold)).foregroundStyle(TrailBoxColor.text)
+                    Text("正在保存轨迹文件并解析路线数据，请勿退出页面。")
+                        .font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText).multilineTextAlignment(.center)
+                }
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(32).frame(maxWidth: .infinity)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("正在分析路线信息")
+        .accessibilityLabel("正在上传运动记录，请勿退出页面")
+    }
+
+    private var uploadGuide: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("以高驰 App 为例：找到这次已同步的运动记录，导出 .fit 文件，再回到小野box选择文件。佳明等平台也按同样方式导出。")
+                guideStep("打开运动 App", "在高驰、佳明等手表配套 App 中找到已同步完成的运动记录。")
+                guideStep("导出 .fit 文件", "在记录详情使用分享或导出入口，保存到“文件”App。")
+                guideStep("回到小野box上传", "选择刚导出的 .fit 文件并补充路线信息。")
+                VideoPlayer(player: tutorialPlayer)
+                    .frame(height: 195)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
+            .padding(.top, 4)
+        } label: {
+            Label("还没有运动文件？查看如何从运动 App 导出", systemImage: "lightbulb")
+                .font(.footnote)
+                .foregroundStyle(TrailBoxColor.secondaryText)
+        }
+    }
+
+    private func guideStep(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.footnote.weight(.semibold)).foregroundStyle(TrailBoxColor.text)
+            Text(detail)
+        }
+    }
+
+    private func settingToggle(_ title: String, description: String, isOn: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Toggle(title, isOn: isOn)
+            Text(description).font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func editedBinding(_ value: Binding<String>, didEdit: Binding<Bool>) -> Binding<String> {
+        Binding(
+            get: { value.wrappedValue },
+            set: { newValue in
+                value.wrappedValue = newValue
+                didEdit.wrappedValue = true
+            }
+        )
+    }
+
+    private func selectFile(_ url: URL) {
+        guard ["fit", "gpx", "kml"].contains(url.pathExtension.lowercased()) else {
+            errorMessage = "仅支持 .fit、.gpx 和 .kml 文件。"
+            return
+        }
+        selectedFile = url
+        suggestionRequestID = UUID()
+        name = url.deletingPathExtension().lastPathComponent
+        cityOptions.removeAll { $0 != "北京" }
+        city = "北京"; tags = ""; sport = "越野跑"
+        nameWasEdited = false; cityWasEdited = false; tagsWereEdited = false; sportWasEdited = false
+        errorMessage = nil
+        suggestionStatus = "准备识别路线名称、城市和标签…"
+        suggest(for: url)
     }
 }

@@ -212,6 +212,7 @@ final class TrackDetailViewModel: ObservableObject {
 
 struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = TrackDetailViewModel()
     @StateObject private var voiceRecorder = FeelingRecorder()
@@ -250,7 +251,8 @@ struct TrackDetailView: View {
         .background(TrailBoxColor.background)
         .navigationTitle(isPublicSource ? "轨迹详情" : "记录详情")
         .navigationBarTitleDisplayMode(.inline)
-        .preference(key: BottomBarVisibilityPreferenceKey.self, value: false)
+        .onAppear { bottomBarVisibility.isVisible = false }
+        .onDisappear { bottomBarVisibility.isVisible = true }
         .task { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) }
         .sheet(item: $navigationDestination) { destination in
             NavigationProviderSheet(

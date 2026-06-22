@@ -5,6 +5,8 @@ final class ExploreViewModel: ObservableObject {
     enum State { case loading, content, empty, failed(String) }
     @Published var state: State = .loading
     @Published var tracks: [Track] = []
+    @Published private(set) var isLoadingMore = false
+    @Published private(set) var canLoadMore = true
     @Published var tags: [ConfiguredTag] = []
     @Published var selectedTag: String?
     @Published var selectedCity: String?
@@ -22,58 +24,93 @@ final class ExploreViewModel: ObservableObject {
         switch sortBy { case "distanceDesc": return result.sorted { $0.distanceM > $1.distanceM }; case "elevationDesc": return result.sorted { $0.elevationGainM > $1.elevationGainM }; default: return result.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) } }
     }
 
-    func load(token: String? = nil) async {
-        let isInitialLoad = tracks.isEmpty
-        if isInitialLoad { state = .loading }
+    func load(token: String? = nil, isRefresh: Bool = false) async {
+        // 只有首次无数据或主动刷新时才重新加载；从详情页返回等场景直接保持现有列表
+        guard isRefresh || tracks.isEmpty else { return }
+        if tracks.isEmpty { state = .loading }
+        canLoadMore = true
+        await loadPage(token: token, reset: true)
+        // 下拉刷新时让指示器至少显示 0.8s，避免请求过快时用户感觉没刷新
+        if isRefresh {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+    }
+
+    func loadMore(token: String? = nil) async {
+        guard case .content = state, canLoadMore, !isLoadingMore else { return }
+        await loadPage(token: token, reset: false)
+    }
+
+    private func loadPage(token: String?, reset: Bool) async {
+        if !reset { isLoadingMore = true }
         do {
-            async let fetchedTracks: [Track] = APIClient.shared.request("/tracks/public?include_points=true", token: token)
-            async let fetchedTags: [ConfiguredTag] = APIClient.shared.request("/tags")
-            tracks = try await fetchedTracks
-            tags = (try? await fetchedTags) ?? []
+            let offset = reset ? 0 : tracks.count
+            async let fetchedTracks: [Track] = APIClient.shared.request("/tracks/public?include_points=true&limit=20&offset=\(offset)", token: token)
+            async let fetchedTags: [ConfiguredTag]? = reset ? APIClient.shared.request("/tags") : nil
+            let page = try await fetchedTracks
+            if reset {
+                tracks = page
+                tags = (try? await fetchedTags) ?? []
+            } else {
+                let existingIDs = Set(tracks.map(\.id))
+                tracks.append(contentsOf: page.filter { !existingIDs.contains($0.id) })
+            }
+            canLoadMore = page.count == 20 && !page.isEmpty
             state = tracks.isEmpty ? .empty : .content
         } catch {
-            if isInitialLoad { state = .failed(error.localizedDescription) }
+            // 只有无数据时才显示失败页；有数据时刷新失败保持当前列表
+            if reset && tracks.isEmpty { state = .failed(error.localizedDescription) }
         }
+        isLoadingMore = false
     }
 }
 
 struct ExploreView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = ExploreViewModel()
     @State private var showFilters = false
+    @State private var navigationPath: [String] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             VStack(spacing: 0) {
                 HStack {
                     Text("探索路线").font(.title2.bold()).foregroundStyle(TrailBoxColor.text)
                     Spacer()
-                    Text("v1.6.1").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
                 }.padding(.horizontal, 16).frame(height: 56).background(.white)
                 switch viewModel.state {
                 case .loading: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .empty: EmptyStateView(title: "暂无公开轨迹", systemImage: "map", message: "成为第一个上传公开路线的人吧")
-                case .failed(let message): EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: message).overlay(alignment: .bottom) { Button("重试") { Task { await viewModel.load() } }.padding() }
+                case .failed(let message): EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: message).overlay(alignment: .bottom) { Button("重试") { Task { await viewModel.load(isRefresh: true) } }.padding() }
                 case .content: content
                 }
             }
             .background(TrailBoxColor.background)
             .toolbar(.hidden, for: .navigationBar)
             .task { await viewModel.load(token: session.token) }
-            .refreshable { await viewModel.load(token: session.token) }
             .sheet(isPresented: $showFilters) { ExploreFilterSheet(viewModel: viewModel) }
+            .navigationDestination(for: String.self) { trackID in
+                TrackDetailView(trackID: trackID, isPublicSource: true)
+            }
         }
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        List {
+            Section {
                 HStack(spacing: 10) {
                     HStack { Image(systemName: "magnifyingglass").foregroundStyle(TrailBoxColor.secondaryText); TextField("搜索路线、城市、标签", text: $viewModel.keyword).font(.subheadline) }.padding(.horizontal, 12).frame(height: 40).background(.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(TrailBoxColor.border))
                     Button { showFilters = true } label: { Image(systemName: "line.3.horizontal.decrease.circle").font(.title3).frame(width: 40, height: 40).background(.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(TrailBoxColor.border)) }
                 }.padding(.horizontal, 16)
-                if !viewModel.tags.isEmpty {
+            }
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+            if !viewModel.tags.isEmpty {
+                Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             tagButton("全部", tag: nil)
@@ -81,14 +118,43 @@ struct ExploreView: View {
                         }.padding(.horizontal, 16)
                     }
                 }
-                if viewModel.filteredTracks.isEmpty {
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
+            if viewModel.filteredTracks.isEmpty {
+                Section {
                     VStack(spacing: 8) { Image(systemName: "line.3.horizontal.decrease.circle").font(.title2).foregroundStyle(TrailBoxColor.secondaryText); Text("暂无匹配路线").font(.headline); Text("试试调整筛选条件").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) }
                         .frame(maxWidth: .infinity).padding(.top, 48)
-                } else {
-                    LazyVStack(spacing: 12) { ForEach(viewModel.filteredTracks) { track in NavigationLink { TrackDetailView(trackID: track.id, isPublicSource: true) } label: { TrackCard(track: track, isActivity: false) }.buttonStyle(.plain) } }
-                        .padding(.horizontal, 16)
                 }
-            }.padding(.vertical, 12)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else {
+                ForEach(viewModel.filteredTracks) { track in
+                    Button { navigationPath.append(track.id) } label: { TrackCard(track: track, isActivity: false) }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .onAppear { if track.id == viewModel.filteredTracks.last?.id { Task { await viewModel.loadMore(token: session.token) } } }
+                }
+                if viewModel.isLoadingMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity).padding(.vertical, 8)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+            }
+        }
+        .listStyle(.plain)
+        .refreshable { @MainActor in
+            await viewModel.load(token: session.token, isRefresh: true)
+        }
+        // Inset the scrollable content so it remains visible above the custom bottom bar.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: RootView.bottomBarHeight)
         }
     }
 

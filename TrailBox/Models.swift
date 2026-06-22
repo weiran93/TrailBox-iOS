@@ -66,6 +66,31 @@ struct Track: Codable, Identifiable, Equatable {
         case contributorName = "contributor_name"; case contributorPublicID = "contributor_public_id"; case createdAt = "created_at"; case aiAnalysisText = "ai_analysis_text"
     }
 
+    // List endpoints intentionally omit the high-volume GPS payload. Detail endpoints
+    // still return it, so callers can use one model for both response shapes.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        userID = try container.decodeIfPresent(Int.self, forKey: .userID)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        city = try container.decodeIfPresent(String.self, forKey: .city)
+        tags = try container.decodeIfPresent(String.self, forKey: .tags)
+        distanceM = try container.decode(Double.self, forKey: .distanceM)
+        elevationGainM = try container.decode(Double.self, forKey: .elevationGainM)
+        elevationLossM = try container.decode(Double.self, forKey: .elevationLossM)
+        durationSec = try container.decodeIfPresent(Double.self, forKey: .durationSec)
+        startTime = try container.decodeIfPresent(Date.self, forKey: .startTime)
+        sport = try container.decodeIfPresent(String.self, forKey: .sport)
+        isPublic = try container.decode(Bool.self, forKey: .isPublic)
+        showContributor = try container.decode(Bool.self, forKey: .showContributor)
+        contributorName = try container.decodeIfPresent(String.self, forKey: .contributorName)
+        contributorPublicID = try container.decodeIfPresent(String.self, forKey: .contributorPublicID)
+        points = try container.decodeIfPresent([TrackPoint].self, forKey: .points) ?? []
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
+        aiAnalysisText = try container.decodeIfPresent(String.self, forKey: .aiAnalysisText)
+    }
+
     var tagList: [String] { (tags ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
 }
 

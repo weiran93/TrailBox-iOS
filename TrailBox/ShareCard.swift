@@ -44,7 +44,7 @@ struct RouteShareData {
 
     var qrURL: URL? {
         guard let routeID, !routeID.isEmpty else { return nil }
-        var components = URLComponents(string: "https://xiaoyebox.com/r/\(routeID)")
+        var components = URLComponents(string: "https://runfast.fun/r/\(routeID)")
         components?.queryItems = [
             URLQueryItem(name: "utm_source", value: "share_card"),
             URLQueryItem(name: "utm_medium", value: "wechat_qr"),
@@ -399,7 +399,7 @@ private enum PWAStyleRouteCardRenderer {
     }
 
     private static func marker(_ point: CGPoint, color: UIColor) { UIColor(hex: 0xF5F8ED).setFill(); UIBezierPath(ovalIn: CGRect(x: point.x - 16, y: point.y - 16, width: 32, height: 32)).fill(); color.setFill(); UIBezierPath(ovalIn: CGRect(x: point.x - 11, y: point.y - 11, width: 22, height: 22)).fill() }
-    private static func drawQR(_ url: URL?, in rect: CGRect, context: CGContext) { UIColor.white.setFill(); rounded(rect, radius: 18).fill(); let filter = CIFilter.qrCodeGenerator(); filter.message = Data((url?.absoluteString ?? "https://xiaoyebox.com").utf8); filter.correctionLevel = "M"; let ci = CIContext(); if let output = filter.outputImage, let image = ci.createCGImage(output, from: output.extent) { context.interpolationQuality = .none; context.draw(image, in: rect.insetBy(dx: 12, dy: 12)) } }
+    private static func drawQR(_ url: URL?, in rect: CGRect, context: CGContext) { UIColor.white.setFill(); rounded(rect, radius: 18).fill(); let filter = CIFilter.qrCodeGenerator(); filter.message = Data((url?.absoluteString ?? "https://runfast.fun").utf8); filter.correctionLevel = "M"; let ci = CIContext(); if let output = filter.outputImage, let image = ci.createCGImage(output, from: output.extent) { context.interpolationQuality = .none; context.draw(image, in: rect.insetBy(dx: 12, dy: 12)) } }
     private static func text(_ value: String, at point: CGPoint, font: UIFont, color: UIColor, context: CGContext, alignment: NSTextAlignment = .left) { let style = NSMutableParagraphStyle(); style.alignment = alignment; (value as NSString).draw(in: CGRect(x: point.x + (alignment == .right ? -936 : alignment == .center ? -180 : 0), y: point.y, width: alignment == .left ? 936 : alignment == .center ? 360 : 936, height: 80), withAttributes: [.font: font, .foregroundColor: color, .paragraphStyle: style]) }
     private static func fit(_ value: String, maxWidth: CGFloat, font: UIFont) -> String { guard (value as NSString).size(withAttributes: [.font: font]).width > maxWidth else { return value }; var text = value; while text.count > 1 && ((text + "…") as NSString).size(withAttributes: [.font: font]).width > maxWidth { text.removeLast() }; return text + "…" }
     private static func rounded(_ rect: CGRect, radius: CGFloat) -> UIBezierPath { UIBezierPath(roundedRect: rect, cornerRadius: radius) }
@@ -418,7 +418,7 @@ private struct QRCodeView: View {
     }
     private var image: UIImage? {
         let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data((url?.absoluteString ?? "https://xiaoyebox.com").utf8)
+        filter.message = Data((url?.absoluteString ?? "https://runfast.fun").utf8)
         filter.correctionLevel = "H"
         guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 12, y: 12)), let cgImage = context.createCGImage(output, from: output.extent) else { return nil }
         return UIImage(cgImage: cgImage)

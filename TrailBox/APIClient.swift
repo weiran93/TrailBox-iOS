@@ -63,7 +63,7 @@ final class APIClient {
         return try decoder.decode(Response.self, from: data)
     }
 
-    func uploadTrack(fileURL: URL, name: String, city: String, tags: String, sport: String, isPublic: Bool, showContributor: Bool, token: String) async throws -> Track {
+    func uploadTrack(fileURL: URL, name: String?, city: String, tags: String, sport: String, isPublic: Bool, showContributor: Bool, token: String) async throws -> Track {
         guard let url = URL(string: "/tracks", relativeTo: AppConfiguration.apiBaseURL)?.absoluteURL else { throw APIError.invalidResponse }
         let boundary = "TrailBox-\(UUID().uuidString)"
         var request = URLRequest(url: url)
@@ -74,7 +74,8 @@ final class APIClient {
         func appendField(_ key: String, _ value: String) {
             body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n".utf8))
         }
-        appendField("name", name); appendField("city", city); appendField("tags", tags); appendField("sport", sport)
+        if let name, !name.isEmpty { appendField("name", name) }
+        appendField("city", city); appendField("tags", tags); appendField("sport", sport)
         appendField("is_public", isPublic ? "true" : "false"); appendField("show_contributor", showContributor ? "true" : "false")
         let filename = fileURL.lastPathComponent
         let fileData = try Data(contentsOf: fileURL)
