@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConfiguration {
-    static let privacyPolicyURL = URL(string: "https://runfast.fun/privacy.html")!
+    static let privacyPolicyURL = URL(string: "https://weiran93.github.io/trailbox-privacy/privacy.html")!
     static let supportEmail = "zhaowr93@foxmail.com"
     /// A LAN or HTTPS API endpoint can be supplied from Xcode's launch arguments:
     /// `-trailboxAPIBaseURL http://192.168.1.10:8000`.

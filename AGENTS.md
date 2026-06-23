@@ -552,7 +552,7 @@ curl -s https://runfast.fun/r/{某条公开路线ID} | head -20
 ## 13. 联系方式与外部链接
 
 - 后端生产地址：`https://runfast.fun`
-- 隐私政策：`https://runfast.fun/privacy.html`
+- 隐私政策：`https://weiran93.github.io/trailbox-privacy/privacy.html`
 - 支持邮箱：`zhaowr93@foxmail.com`
 - Deep Link 域名：`https://runfast.fun/r/{id}`
 - 生产服务器：阿里云 ECS `121.40.151.3`
@@ -565,23 +565,21 @@ curl -s https://runfast.fun/r/{某条公开路线ID} | head -20
 
 ### 进行中的任务
 
-为 App Store 上架准备可访问的隐私政策页面。
+无。
 
 ### 已完成
 
 1. 生成隐私政策 HTML：`/Users/zhaoweiran/projects/TrailBox-iOS/privacy.html`
 2. 安装 GitHub CLI：`~/.local/bin/gh`（版本 2.95.0）
+3. 创建公开仓库 `trailbox-privacy`：`https://github.com/weiran93/trailbox-privacy`
+4. 上传 `privacy.html` 到该仓库
+5. 开启 GitHub Pages（source: main / root），Pages 链接：`https://weiran93.github.io/trailbox-privacy/`
+6. 更新 `TrailBox/AppConfiguration.swift` 中的 `privacyPolicyURL` 为 `https://weiran93.github.io/trailbox-privacy/privacy.html`
+7. 更新本 AGENTS.md 中相关的隐私政策 URL 引用
 
 ### 待完成
 
-1. 使用 GitHub CLI 创建公开仓库 `trailbox-privacy`
-2. 上传 `privacy.html` 到该仓库
-3. 开启 GitHub Pages（source: main / root）
-4. 获取 Pages 链接，例如：
-   `https://<GitHub用户名>.github.io/trailbox-privacy/privacy.html`
-5. 更新 `TrailBox/AppConfiguration.swift` 中的 `privacyPolicyURL`
-6. 更新本 AGENTS.md 中相关的隐私政策 URL 引用
-7. 构建验证项目是否仍能编译通过
+无。
 
 ### 阻塞点
 
