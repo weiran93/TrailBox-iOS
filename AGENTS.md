@@ -577,6 +577,12 @@ curl -s https://runfast.fun/r/{某条公开路线ID} | head -20
 6. 更新 `TrailBox/AppConfiguration.swift` 中的 `privacyPolicyURL` 为 `https://weiran93.github.io/trailbox-privacy/privacy.html`
 7. 更新本 AGENTS.md 中相关的隐私政策 URL 引用
 
+### 部署说明
+
+- `trailbox-privacy` 仓库仅用于托管隐私政策页面，未包含整套 iOS 项目源码。
+- 原因是 `/Users/zhaoweiran/projects/TrailBox-iOS` 本身已是独立仓库（`weiran93/TrailBox-iOS`），因此新建 `trailbox-privacy` 时只放入了 `privacy.html`，避免源码重复公开。
+- 本地 `curl` 验证因网络环境出现 `Connection reset by peer`，但 GitHub Pages API 确认 build 状态为 `built`，页面在正常网络下可访问。
+
 ### 待完成
 
 无。
@@ -587,8 +593,8 @@ curl -s https://runfast.fun/r/{某条公开路线ID} | head -20
 
 ### 相关文件
 
-- `TrailBox/AppConfiguration.swift`（需更新 `privacyPolicyURL`）
-- `/Users/zhaoweiran/projects/TrailBox-iOS/privacy.html`（已生成的隐私政策页面）
+- `TrailBox/AppConfiguration.swift`（已更新 `privacyPolicyURL`）
+- `/Users/zhaoweiran/projects/TrailBox-iOS/privacy.html`（已生成的隐私政策页面，未加入本仓库，已单独推送至 `weiran93/trailbox-privacy`）
 
 ---
 
