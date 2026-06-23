@@ -1,7 +1,7 @@
 # TrailBox iOS — Agent 接手文档
 
 > 文档定位：本文件面向需要继续迭代、修复或扩展 TrailBox iOS 端的 AI Agent / 开发者。阅读后应能独立完成编译、运行、定位代码、添加功能。
-> 文档版本：2026-06-22（基于项目当前文件状态）
+> 文档版本：2026-06-23（基于项目当前文件状态）
 > 项目路径：`/Users/zhaoweiran/projects/TrailBox/ios/TrailBox`
 
 ---
@@ -307,6 +307,8 @@ struct TrailBoxApp: App {
 
 > 注意：微信内置浏览器会拦截 Universal Link 自动唤起，因此落地页需要在微信内给出明确的「用 Safari 打开」引导。
 
+> **当前临时调整（2026-06-23）**：由于 `runfast.fun` 域名 ICP 备案尚未完成，公网 80/443 被阿里云拦截，分享卡片中的路线二维码暂时移除。路线版分享卡（`ShareCardType.routeQR`）底部改为文案引导：「在 App Store 搜索「小野box」下载 APP」。待 ICP 备案完成或 App Store 链接确定后，可恢复二维码或改为指向 App Store 产品页。相关实现见 `TrailBox/ShareCard.swift`。
+
 ---
 
 ## 8. 编码规范
@@ -346,13 +348,14 @@ let tracks: [Track] = try await APIClient.shared.request(
 
 ## 9. 已知问题与注意事项
 
-1. **版本号不一致**：`SettingsView` 中硬编码版本 `v1.6.1`，但 `MARKETING_VERSION` 是 `0.1.0`。发布前需统一。
+1. **版本号不一致**：`SettingsView` 中硬编码版本 `v1.6.1`，但 `MARKETING_VERSION` 是 `0.1.0`。发布前需统一。**（已修复：2026-06-23 改为从 `Bundle.main` 读取 `CFBundleShortVersionString`。）**
 2. **无单元/UI 测试**：新增关键逻辑时建议补充测试。
 3. **中文 UI 文案**：所有用户可见文本都是中文，新增文案保持一致。
 4. **权限声明**：`Info.plist` 已声明麦克风、语音识别、相册写入。新增敏感权限必须补充 UsageDescription。
 5. **Deep Link 域名**：`runfast.fun`，仅支持 HTTPS universal link，无自定义 URL scheme。分享卡片二维码指向 `https://runfast.fun/r/{id}`，该链接同时作为 PWA 落地页和 iOS Universal Link 使用。
 6. **后端地址**：默认生产 `https://runfast.fun`；本地调试用 Launch Argument 覆盖，不要硬编码到代码里。
 7. **无第三方依赖**：不要私自引入 CocoaPods / SPM 包；如确需引入，需在本文档更新依赖说明。
+8. **分享卡二维码临时移除**：因 ICP 备案未完成，`runfast.fun` 落地页无法访问，分享卡片（路线版）不再渲染二维码，改为底部文案「在 App Store 搜索「小野box」下载 APP」。待 ICP 备案完成或 App Store 链接确定后可恢复。相关代码位于 `TrailBox/ShareCard.swift`。
 
 ---
 

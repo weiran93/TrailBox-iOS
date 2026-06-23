@@ -158,6 +158,10 @@ struct SettingsView: View {
     @State private var isDeletingAccount = false
     @State private var accountActionMessage: String?
 
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+    }
+
     var body: some View {
         ZStack {
             NavigationStack {
@@ -206,7 +210,7 @@ struct SettingsView: View {
                     } footer: {
                         HStack {
                             Spacer()
-                            Text("v1.6.1").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                            Text("v\(appVersion)").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
                             Spacer()
                         }
                     }

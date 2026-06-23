@@ -207,8 +207,10 @@ private struct BrandFooter: View {
             HStack(alignment: .bottom, spacing: 18) {
                 brandName
                 Spacer()
-                QRCodeView(url: qrURL).frame(width: 112, height: 112).background(.white).padding(7).overlay(RoundedRectangle(cornerRadius: 8).stroke(TrailBoxColor.border)).clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 6) { Text("微信扫码查看路线").font(.system(size: 17, weight: .semibold)).foregroundStyle(foreground); Text("来自小野box APP").font(.system(size: 15)).foregroundStyle(secondary) }
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("在 App Store 搜索").font(.system(size: 15, weight: .medium)).foregroundStyle(secondary)
+                    Text("「小野box」下载 APP").font(.system(size: 17, weight: .semibold)).foregroundStyle(foreground)
+                }
             }
         } else {
             HStack { brandName; Spacer(); Text(type == .activityLightBrand ? "完整路线见「小野box APP」" : "记录每一次向山而行").font(.system(size: 19, weight: .medium)).foregroundStyle(secondary) }
@@ -309,11 +311,9 @@ private enum PWAStyleRouteCardRenderer {
             ctx.setFillColor(UIColor(hex: 0xC4D1C6).cgColor); ctx.fill(CGRect(x: 72, y: 1074, width: 936, height: 1))
             if !isActivity {
                 text("把每一段山野，收藏成下一次出发的理由。", at: CGPoint(x: 72, y: 1110), font: .systemFont(ofSize: 29, weight: .semibold), color: UIColor(hex: 0x385746), context: ctx)
-                drawQR(data.qrURL, in: CGRect(x: 796, y: 1100, width: 184, height: 184), context: ctx)
-                text("微信扫码查看路线", at: CGPoint(x: 888, y: 1300), font: .systemFont(ofSize: 22, weight: .semibold), color: UIColor(hex: 0x587164), context: ctx, alignment: .center)
                 UIColor(hex: 0x173A2D).setFill(); rounded(CGRect(x: 72, y: 1328, width: 936, height: 64), radius: 20).fill()
                 text("TRAILBOX", at: CGPoint(x: 102, y: 1344), font: .systemFont(ofSize: 25, weight: .bold), color: UIColor(hex: 0xD9F3C0), context: ctx)
-                text("记录每一次向山而行", at: CGPoint(x: 978, y: 1344), font: .systemFont(ofSize: 23, weight: .medium), color: UIColor(hex: 0xF1F5E9), context: ctx, alignment: .right)
+                text("在 App Store 搜索「小野box」下载 APP", at: CGPoint(x: 978, y: 1344), font: .systemFont(ofSize: 22, weight: .semibold), color: .white, context: ctx, alignment: .right)
             } else {
                 UIColor(hex: 0x173A2D).setFill(); rounded(CGRect(x: 72, y: 1114, width: 936, height: 218), radius: 28).fill()
                 text("●  小野box", at: CGPoint(x: 116, y: 1172), font: .systemFont(ofSize: 36, weight: .bold), color: .white, context: ctx)
