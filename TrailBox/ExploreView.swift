@@ -59,7 +59,7 @@ final class ExploreViewModel: ObservableObject {
             state = tracks.isEmpty ? .empty : .content
         } catch {
             // 只有无数据时才显示失败页；有数据时刷新失败保持当前列表
-            if reset && tracks.isEmpty { state = .failed(error.localizedDescription) }
+            if reset && tracks.isEmpty { state = .failed(ErrorMessage.display(error)) }
         }
         isLoadingMore = false
     }

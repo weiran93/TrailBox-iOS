@@ -12,7 +12,7 @@
 
 - **App 显示名**：`小野box`
 - **Bundle ID**：`com.trailbox.ios`
-- **当前版本**：`0.1.0`（Build `1`）
+- **当前版本**：`0.1.2`（Build `4`）
 - **iOS 最低版本**：iOS 16.0
 - **设备支持**：仅 iPhone（`TARGETED_DEVICE_FAMILY = 1`）
 - **开发团队**：`CNXB3793X3`
@@ -333,7 +333,7 @@ struct TrailBoxApp: App {
 
 > 注意：微信内置浏览器会拦截 Universal Link 自动唤起，因此落地页需要在微信内给出明确的「用 Safari 打开」引导。
 
-> **当前临时调整（2026-06-23）**：由于 `runfast.fun` 域名 ICP 备案尚未完成，公网 80/443 被阿里云拦截，分享卡片中的路线二维码暂时移除。路线版分享卡（`ShareCardType.routeQR`）底部改为文案引导：「在 App Store 搜索「小野box」下载 APP」。待 ICP 备案完成或 App Store 链接确定后，可恢复二维码或改为指向 App Store 产品页。相关实现见 `TrailBox/ShareCard.swift`。
+> **当前状态（2026-07-03）**：`runfast.fun` ICP 备案和 App Store 链接均已就绪，路线版分享卡（`ShareCardType.routeQR`）已恢复二维码。二维码指向 `https://runfast.fun/r/{id}?utm_source=share_card&...`，微信扫码进入 PWA 轨迹详情页；用户点击下载 GPX、导航等操作时，引导打开 APP 或前往 App Store 下载。相关实现见 `TrailBox/ShareCard.swift`，PWA 落地页实现见 `/Users/zhaoweiran/projects/TrailBox/web/app.js`。
 
 ---
 
@@ -381,7 +381,7 @@ let tracks: [Track] = try await APIClient.shared.request(
 5. **Deep Link 域名**：`runfast.fun`，仅支持 HTTPS universal link，无自定义 URL scheme。分享卡片二维码指向 `https://runfast.fun/r/{id}`，该链接同时作为 PWA 落地页和 iOS Universal Link 使用。
 6. **后端地址**：默认生产 `https://runfast.fun`；本地调试用 Launch Argument 覆盖，不要硬编码到代码里。
 7. **无第三方依赖**：不要私自引入 CocoaPods / SPM 包；如确需引入，需在本文档更新依赖说明。
-8. **分享卡二维码临时移除**：因 ICP 备案未完成，`runfast.fun` 落地页无法访问，分享卡片（路线版）不再渲染二维码，改为底部文案「在 App Store 搜索「小野box」下载 APP」。待 ICP 备案完成或 App Store 链接确定后可恢复。相关代码位于 `TrailBox/ShareCard.swift`。
+8. **分享卡二维码已恢复**：路线版分享卡渲染二维码，指向 `https://runfast.fun/r/{id}` 分享落地页。PWA 落地页负责展示公开轨迹详情，并在下载 GPX、导航等操作时引导打开 APP 或前往 App Store。
 
 ---
 
@@ -437,7 +437,7 @@ python3 run.py
 
 ## 12. 生产部署说明（阿里云）
 
-> 当前状态：后端代码已部署到阿里云 ECS，但因域名 `runfast.fun` 尚未完成 ICP 备案，公网 80/443 端口被阿里云拦截，无法直接访问。备案通过并配置 Nginx Proxy Manager 后即可正式对外服务。
+> 当前状态：后端代码已部署到阿里云 ECS，`runfast.fun` ICP 备案已完成。确保 Nginx Proxy Manager、HTTPS 证书和后端服务正常后，即可通过生产域名访问。
 
 ### 12.1 服务器信息
 
@@ -502,9 +502,9 @@ ssh -i /Users/zhaoweiran/.ssh/trailbox-ecs root@121.40.151.3 \
   "systemctl restart trailbox.service && systemctl status trailbox.service --no-pager"
 ```
 
-### 12.5 ICP 备案完成后的 Nginx Proxy Manager 配置
+### 12.5 Nginx Proxy Manager 配置
 
-备案通过后，登录 Nginx Proxy Manager 管理后台：
+登录 Nginx Proxy Manager 管理后台：
 
 ```text
 http://121.40.151.3:5003
@@ -541,8 +541,8 @@ curl -s https://runfast.fun/r/{某条公开路线ID} | head -20
 
 ### 12.7 已知部署限制
 
-- **ICP 备案未完成前**，公网 `http://runfast.fun` 和 `https://runfast.fun` 都会被阿里云拦截，无法访问。
-- 备案期间如需测试，可使用：
+- 微信内置浏览器会拦截 Universal Link 自动唤起，分享落地页需继续保留「在 Safari 中打开」引导。
+- 如需本地联调，可使用：
   - 本地开发环境：`http://localhost:8000`
   - 局域网 IP + iOS Launch Argument
   - 内网穿透工具（如 `localtunnel`、`ngrok`）临时暴露服务
@@ -552,6 +552,7 @@ curl -s https://runfast.fun/r/{某条公开路线ID} | head -20
 ## 13. 联系方式与外部链接
 
 - 后端生产地址：`https://runfast.fun`
+- App Store 链接：`https://apps.apple.com/us/app/%E5%B0%8F%E9%87%8Ebox-%E7%B2%BE%E9%80%89%E8%B6%8A%E9%87%8E%E8%B7%91%E8%B7%AF%E7%BA%BF-ai%E8%BF%90%E5%8A%A8%E5%88%86%E6%9E%90/id6783572832`
 - 隐私政策：`https://weiran93.github.io/trailbox-privacy/privacy.html`
 - 支持邮箱：`zhaowr93@foxmail.com`
 - Deep Link 域名：`https://runfast.fun/r/{id}`
@@ -598,7 +599,136 @@ curl -s https://runfast.fun/r/{某条公开路线ID} | head -20
 
 ---
 
-## 15. 文档维护说明
+## 15. App Store Connect 发布自动化（2026-07-03）
+
+本节记录通过本机 Xcode + App Store Connect API key 构建、上传、创建版本并提交审核的当前可用流程。不要把 `.p8` 私钥内容写入仓库或聊天；仅记录本机私钥路径和 Key ID。
+
+### 15.1 当前 API Key 与私钥位置
+
+App Store Connect Issuer ID：
+
+```text
+efd9b8e3-ce8d-4b0c-8fc1-f8a49961a38f
+```
+
+本机私钥已从桌面整理到：
+
+```text
+/Users/zhaoweiran/.private_keys/appstoreconnect/
+```
+
+当前文件：
+
+| Key ID | 文件 | 已验证能力 |
+|--------|------|------------|
+| `9KL68R49S6` | `/Users/zhaoweiran/.private_keys/appstoreconnect/AuthKey_9KL68R49S6.p8` | 可上传 build、创建 App Store 版本、关联 build、提交审核 |
+| `KMDPVCQXH2` | `/Users/zhaoweiran/.private_keys/appstoreconnect/AuthKey_KMDPVCQXH2.p8` | 可上传 build；创建版本权限不足 |
+| `88XPJCO2W0J0` | `/Users/zhaoweiran/.private_keys/appstoreconnect/ApiKey_88XPJCO2W0J0.p8` | 未用于本次发布，能力未确认 |
+
+私钥目录权限应保持：
+
+```bash
+chmod 700 /Users/zhaoweiran/.private_keys /Users/zhaoweiran/.private_keys/appstoreconnect
+chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
+```
+
+### 15.2 本次发布状态
+
+- App Store App ID：`6783572832`
+- Bundle ID：`com.trailbox.ios`
+- 已上传版本：`0.1.2`
+- 当前提交审核 build：`4`
+- Build ID / Delivery UUID：`1259c0ac-4e4a-4683-8872-a0954ab4afbb`
+- Review Submission ID：`e13f6df6-d463-430c-9796-3c8d32f2e615`
+- 当前审核状态：`WAITING_FOR_REVIEW`
+- 提交时间：`2026-07-04T16:10:04.318Z`
+- 旧审核提交 `3e27b014-390f-4448-8dcd-c81111c84724` 已由开发者拒绝，原 build `2` 不再作为当前审核 build。
+- 更新说明：`修复未登录下载 GPX 时的登录引导；优化登录后记录页加载和网络错误提示；优化分享卡片二维码与 App Store 下载引导文案。`
+
+### 15.3 构建与上传命令
+
+构建前至少提升 build 号；如果线上同版本已上架，必须提升 `MARKETING_VERSION`，仅提升 `CURRENT_PROJECT_VERSION` 会被 Apple 拒绝。当前项目已提升到：
+
+```text
+MARKETING_VERSION = 0.1.2
+CURRENT_PROJECT_VERSION = 4
+```
+
+Archive：
+
+```bash
+cd /Users/zhaoweiran/projects/TrailBox-iOS
+
+rm -rf /tmp/TrailBox.xcarchive /tmp/TrailBox-Export
+xcodebuild -project TrailBox.xcodeproj \
+  -scheme TrailBox \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath /tmp/TrailBox.xcarchive \
+  archive \
+  -allowProvisioningUpdates
+```
+
+导出 IPA。`/tmp/TrailBox-exportOptions.plist` 当前使用 `method = app-store-connect`、`destination = export`、`signingStyle = automatic`、`teamID = CNXB3793X3`：
+
+```bash
+xcodebuild -exportArchive \
+  -archivePath /tmp/TrailBox.xcarchive \
+  -exportPath /tmp/TrailBox-Export \
+  -exportOptionsPlist /tmp/TrailBox-exportOptions.plist \
+  -allowProvisioningUpdates
+```
+
+上传 IPA：
+
+```bash
+xcrun altool --upload-app \
+  -f /tmp/TrailBox-Export/TrailBox.ipa \
+  --type ios \
+  --api-key 9KL68R49S6 \
+  --api-issuer efd9b8e3-ce8d-4b0c-8fc1-f8a49961a38f \
+  --p8-file-path /Users/zhaoweiran/.private_keys/appstoreconnect/AuthKey_9KL68R49S6.p8
+```
+
+### 15.4 App Store Connect API 后续操作
+
+高权限 key `9KL68R49S6` 已验证可以执行：
+
+1. `POST /v1/appStoreVersions` 创建版本。
+2. `PATCH /v1/appStoreVersions/{id}/relationships/build` 关联 build。
+3. `POST` / `PATCH` `appStoreVersionLocalizations` 写入更新说明。
+4. `PATCH /v1/appStoreVersions/{id}` 设置 `usesIdfa = false`。
+5. `POST /v1/reviewSubmissions` 创建审核提交。
+6. `POST /v1/reviewSubmissionItems` 添加版本审核项。
+7. `PATCH /v1/reviewSubmissions/{id}` 设置 `submitted = true` 提交审核。
+
+注意：旧接口 `POST /v1/appStoreVersionSubmissions` 不再用于创建审核提交；Apple 返回该资源只允许 `DELETE`。
+
+### 15.5 证书与 Provisioning Profile 注意事项
+
+本机已安装：
+
+```text
+Apple Distribution: weiran zhao (CNXB3793X3)
+```
+
+若导出 IPA 时报：
+
+```text
+Provisioning profile ... doesn't include signing certificate ...
+```
+
+可先在 Xcode 账号中刷新/重新生成 profile，或临时移走旧的 Store profile 后用：
+
+```bash
+xcodebuild -exportArchive ... -allowProvisioningUpdates
+```
+
+本次实际可行路径是使用本机 Xcode 登录态执行 `-allowProvisioningUpdates`，让 Xcode 自动更新 Store provisioning profile。
+
+---
+
+## 16. 文档维护说明
 
 修改以下内容时，请同步更新本文件：
 

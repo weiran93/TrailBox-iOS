@@ -206,7 +206,7 @@ final class TrackDetailViewModel: ObservableObject {
     func load(id: String, isPublic: Bool, token: String?) async {
         state = .loading
         do { let path = isPublic ? "/tracks/\(id)/public" : "/tracks/\(id)"; state = .content(try await APIClient.shared.request(path, token: token)) }
-        catch { state = .failed(error.localizedDescription) }
+        catch { state = .failed(ErrorMessage.display(error)) }
     }
 }
 
@@ -253,7 +253,7 @@ struct TrackDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { bottomBarVisibility.isVisible = false }
         .onDisappear { bottomBarVisibility.isVisible = true }
-        .task { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) }
+        .task(id: session.token) { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) }
         .sheet(item: $navigationDestination) { destination in
             NavigationProviderSheet(
                 destinationName: destination.name,
@@ -547,7 +547,20 @@ struct TrackDetailView: View {
     }
 
     private func download(_ track: Track) {
-        Task { do { shareFile = ActivityFile(url: try await APIClient.shared.downloadGPX(trackID: track.id, token: session.token)) } catch { actionError = error.localizedDescription } }
+        guard session.isAuthenticated, let token = session.token else {
+            session.requireAuthentication()
+            return
+        }
+        Task {
+            do {
+                shareFile = ActivityFile(url: try await APIClient.shared.downloadGPX(trackID: track.id, token: token))
+            } catch APIError.unauthorized {
+                session.handle(APIError.unauthorized)
+                session.requireAuthentication()
+            } catch {
+                actionError = ErrorMessage.display(error)
+            }
+        }
     }
 
     private func delete(_ track: Track) {

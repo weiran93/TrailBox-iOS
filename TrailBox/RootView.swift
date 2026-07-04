@@ -11,6 +11,7 @@ struct RootView: View {
     @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     @State private var selectedTab: Tab = .explore
     @State private var showAuthentication = false
+    @State private var pendingTabAfterAuthentication: Tab?
 
     private enum Tab { case explore, activity }
 
@@ -42,11 +43,19 @@ struct RootView: View {
             get: { showAuthentication || session.shouldPresentAuthentication },
             set: { presented in
                 showAuthentication = presented
-                if !presented { session.shouldPresentAuthentication = false }
+                if !presented {
+                    session.shouldPresentAuthentication = false
+                    if !session.isAuthenticated { pendingTabAfterAuthentication = nil }
+                }
             }
         )) { AuthenticationView() }
         .sheet(item: $deepLinkRouter.pendingRoute) { route in
             NavigationStack { TrackDetailView(trackID: route.id, isPublicSource: true) }
+        }
+        .onChange(of: session.isAuthenticated) { isAuthenticated in
+            guard isAuthenticated, let pendingTab = pendingTabAfterAuthentication else { return }
+            selectedTab = pendingTab
+            pendingTabAfterAuthentication = nil
         }
     }
 
@@ -75,9 +84,11 @@ struct RootView: View {
         Button {
             if tab == .activity && !session.isAuthenticated {
                 selectedTab = .explore
+                pendingTabAfterAuthentication = .activity
                 showAuthentication = true
             } else {
                 selectedTab = tab
+                pendingTabAfterAuthentication = nil
             }
         } label: {
             VStack(spacing: 3) {

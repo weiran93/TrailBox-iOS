@@ -311,9 +311,11 @@ private enum PWAStyleRouteCardRenderer {
             ctx.setFillColor(UIColor(hex: 0xC4D1C6).cgColor); ctx.fill(CGRect(x: 72, y: 1074, width: 936, height: 1))
             if !isActivity {
                 text("把每一段山野，收藏成下一次出发的理由。", at: CGPoint(x: 72, y: 1110), font: .systemFont(ofSize: 29, weight: .semibold), color: UIColor(hex: 0x385746), context: ctx)
+                drawQR(data.qrURL, in: CGRect(x: 820, y: 1102, width: 160, height: 160), context: ctx)
+                text("扫码查看路线", at: CGPoint(x: 900, y: 1278), font: .systemFont(ofSize: 20, weight: .semibold), color: UIColor(hex: 0x587164), context: ctx, alignment: .center)
                 UIColor(hex: 0x173A2D).setFill(); rounded(CGRect(x: 72, y: 1328, width: 936, height: 64), radius: 20).fill()
                 text("TRAILBOX", at: CGPoint(x: 102, y: 1344), font: .systemFont(ofSize: 25, weight: .bold), color: UIColor(hex: 0xD9F3C0), context: ctx)
-                text("在 App Store 搜索「小野box」下载 APP", at: CGPoint(x: 978, y: 1344), font: .systemFont(ofSize: 22, weight: .semibold), color: .white, context: ctx, alignment: .right)
+                text("iPhone 可在 App Store 下载小野box", at: CGPoint(x: 978, y: 1344), font: .systemFont(ofSize: 22, weight: .semibold), color: .white, context: ctx, alignment: .right)
             } else {
                 UIColor(hex: 0x173A2D).setFill(); rounded(CGRect(x: 72, y: 1114, width: 936, height: 218), radius: 28).fill()
                 text("●  小野box", at: CGPoint(x: 116, y: 1172), font: .systemFont(ofSize: 36, weight: .bold), color: .white, context: ctx)

@@ -36,7 +36,7 @@ final class MyTracksViewModel: ObservableObject {
             canLoadMore = page.count == 20 && !page.isEmpty
             state = tracks.isEmpty ? .empty : .content
         } catch {
-            if reset { state = .failed(error.localizedDescription) }
+            if reset { state = .failed(ErrorMessage.display(error)) }
         }
         isLoadingMore = false
     }
@@ -101,7 +101,11 @@ struct MyTracksView: View {
                     }
                 }
             }.background(TrailBoxColor.background).toolbar(.hidden, for: .navigationBar)
-                .task { if let token = session.token { await viewModel.load(token: token) } else { showAuthentication = true } }
+                .task(id: session.token) {
+                    if let token = session.token {
+                        await viewModel.load(token: token)
+                    }
+                }
                 .sheet(isPresented: $showSettings) { SettingsView() }
                 .navigationDestination(for: Destination.self) { destination in
                     switch destination {

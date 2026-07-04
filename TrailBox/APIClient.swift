@@ -14,6 +14,34 @@ enum APIError: LocalizedError {
     }
 }
 
+enum ErrorMessage {
+    static func display(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            return apiError.localizedDescription
+        }
+
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return error.localizedDescription
+        }
+
+        switch nsError.code {
+        case NSURLErrorNotConnectedToInternet,
+             NSURLErrorDataNotAllowed,
+             NSURLErrorInternationalRoamingOff:
+            return "网络连接不可用，请检查网络后重试"
+        case NSURLErrorTimedOut:
+            return "网络请求超时，请稍后重试"
+        case NSURLErrorCannotFindHost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorNetworkConnectionLost:
+            return "无法连接服务器，请稍后重试"
+        default:
+            return "网络请求失败，请稍后重试"
+        }
+    }
+}
+
 final class APIClient {
     static let shared = APIClient()
     private let decoder: JSONDecoder
@@ -146,7 +174,9 @@ final class APIClient {
         var request = URLRequest(url: url)
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (temporaryURL, response) = try await URLSession.shared.download(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.server("下载 GPX 失败") }
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.server("下载 GPX 失败") }
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("trailbox-\(trackID).gpx")
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.copyItem(at: temporaryURL, to: destination)
