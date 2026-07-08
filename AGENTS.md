@@ -675,12 +675,14 @@ chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
 - Bundle ID：`com.trailbox.ios`
 - 已上传版本：`0.1.3`
 - 当前提交审核 build：`5`
-- Build ID / Delivery UUID：`1259c0ac-4e4a-4683-8872-a0954ab4afbb`
-- Review Submission ID：`e13f6df6-d463-430c-9796-3c8d32f2e615`
+- App Store Version ID：`edaa7e2c-e96f-4f8a-a7d9-c39861dc7c6e`
+- Build ID / Delivery UUID：`63c6fe35-b511-44c3-904b-286c72d447d5`
+- Review Submission ID：`3e32f20e-9c6e-43e6-a496-0e3e288354fb`
 - 当前审核状态：`WAITING_FOR_REVIEW`
-- 提交时间：`2026-07-04T16:10:04.318Z`
+- 提交时间：`2026-07-08T10:05:23.849Z`
 - 旧审核提交 `3e27b014-390f-4448-8dcd-c81111c84724` 已由开发者拒绝，原 build `2` 不再作为当前审核 build。
-- 更新说明：`修复未登录下载 GPX 时的登录引导；优化登录后记录页加载和网络错误提示；优化分享卡片二维码与 App Store 下载引导文案。`
+- 上一版审核提交 `e13f6df6-d463-430c-9796-3c8d32f2e615` 对应 `0.1.2 (4)`，本次提交前已不再作为当前审核 build。
+- 更新说明：`新增 ITRA 资料绑定与 App 内详情页；支持展示 ITRA 表现分、排名、统计数据和比赛记录；优化管理后台批量上传和路线编辑；修复部分接口返回格式不一致时的错误提示。`
 
 ### 15.3 构建与上传命令
 
