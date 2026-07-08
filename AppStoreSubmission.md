@@ -103,24 +103,22 @@ Your track collection for trail running and hiking. Import, explore, and share r
 
 ### 中文
 ```
-首发版本：
-• 支持导入 .fit / .gpx / .kml 轨迹文件
-• 探索路线：浏览、筛选、搜索公开路线
-• 我的记录：轨迹管理、月度统计与设置
-• AI 运动分析：语音/文字记录体感，获取运动建议
-• 分享卡生成与相册保存
-• 路线导航：支持多款地图应用跳转
+本次更新：
+• 新增 ITRA 资料绑定与 App 内详情页
+• 支持展示 ITRA 表现分、排名、统计数据和比赛记录
+• 优化管理后台批量上传，可保留轨迹原名并在发布前编辑
+• 管理后台支持编辑已有路线信息
+• 修复部分接口返回格式不一致时的错误提示
 ```
 
 ### 英文
 ```
-Initial release:
-• Import .fit / .gpx / .kml track files
-• Explore public routes with filters and search
-• My Tracks: manage records, monthly stats, and settings
-• AI workout analysis from voice or text feedback
-• Share card generation and photo library save
-• Route navigation with support for multiple map apps
+This update:
+• Adds ITRA profile linking and in-app detail pages
+• Shows ITRA performance index, rankings, stats, and race records when publicly available
+• Improves admin batch uploads with original-name preservation and pre-publish editing
+• Adds admin editing for existing routes
+• Improves error messages for unexpected API responses
 ```
 
 ---

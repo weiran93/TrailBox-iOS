@@ -109,11 +109,287 @@ struct AdminBatchUploadResult: Codable {
     let errors: [AdminBatchOperationError]
 }
 
+struct AdminBatchPreviewItem: Codable, Identifiable, Equatable {
+    let id: String
+    let filename: String
+    let name: String
+    let city: String?
+    let tags: String?
+    let sport: String?
+    let isPublic: Bool
+    let showContributor: Bool
+    let distanceM: Double
+    let elevationGainM: Double
+    let elevationLossM: Double
+    let durationSec: Double?
+    let startTime: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, filename, name, city, tags, sport
+        case isPublic = "is_public"; case showContributor = "show_contributor"
+        case distanceM = "distance_m"; case elevationGainM = "elevation_gain_m"; case elevationLossM = "elevation_loss_m"
+        case durationSec = "duration_sec"; case startTime = "start_time"
+    }
+}
+
+struct AdminBatchPreviewResult: Codable {
+    let draftID: String
+    let items: [AdminBatchPreviewItem]
+    let errors: [AdminBatchOperationError]
+
+    enum CodingKeys: String, CodingKey { case draftID = "draft_id"; case items, errors }
+}
+
+struct AdminBatchCommitItem: Encodable {
+    let id: String
+    let filename: String
+    let name: String
+    let city: String?
+    let tags: String?
+    let sport: String
+    let isPublic: Bool
+    let showContributor: Bool
+}
+
 struct TrackMetadataSuggestion: Codable {
     let name: String?
     let city: String?
     let tags: [String]?
     let sport: String?
+}
+
+struct ITRAProfile: Codable, Equatable {
+    let runnerID: String
+    let profileURL: String
+    let displayName: String?
+    let gender: String?
+    let nationality: String?
+    let age: String?
+    let ageGroup: String?
+    let performanceIndex: Int?
+    let latestResultSummary: String?
+    let lookupSource: String?
+    let lookupConfidence: Double?
+    let lastQuery: String?
+    let lastCheckedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case gender, nationality, age
+        case runnerID = "runner_id"
+        case profileURL = "profile_url"
+        case displayName = "display_name"
+        case ageGroup = "age_group"
+        case performanceIndex = "performance_index"
+        case latestResultSummary = "latest_result_summary"
+        case lookupSource = "lookup_source"
+        case lookupConfidence = "lookup_confidence"
+        case lastQuery = "last_query"
+        case lastCheckedAt = "last_checked_at"
+    }
+}
+
+struct ITRASearchCandidate: Codable, Identifiable, Equatable {
+    let runnerID: String
+    let profileURL: String
+    let displayName: String?
+    let gender: String?
+    let nationality: String?
+    let age: String?
+    let ageGroup: String?
+    let performanceIndex: Int?
+    let latestResultSummary: String?
+    let lookupSource: String
+    let lookupConfidence: Double
+
+    var id: String { runnerID }
+
+    enum CodingKeys: String, CodingKey {
+        case gender, nationality, age
+        case runnerID = "runner_id"
+        case profileURL = "profile_url"
+        case displayName = "display_name"
+        case ageGroup = "age_group"
+        case performanceIndex = "performance_index"
+        case latestResultSummary = "latest_result_summary"
+        case lookupSource = "lookup_source"
+        case lookupConfidence = "lookup_confidence"
+    }
+}
+
+struct ITRASearchResponse: Codable {
+    let query: String
+    let candidates: [ITRASearchCandidate]
+}
+
+struct ITRAProfileUpdateRequest: Encodable {
+    let runnerID: String
+    let profileURL: String
+    let displayName: String?
+    let gender: String?
+    let nationality: String?
+    let age: String?
+    let ageGroup: String?
+    let performanceIndex: Int?
+    let latestResultSummary: String?
+    let lookupSource: String?
+    let lookupConfidence: Double?
+    let lastQuery: String?
+
+    enum CodingKeys: String, CodingKey {
+        case gender, nationality, age
+        case runnerID = "runner_id"
+        case profileURL = "profile_url"
+        case displayName = "display_name"
+        case ageGroup = "age_group"
+        case performanceIndex = "performance_index"
+        case latestResultSummary = "latest_result_summary"
+        case lookupSource = "lookup_source"
+        case lookupConfidence = "lookup_confidence"
+        case lastQuery = "last_query"
+    }
+}
+
+struct ITRAProfileDetail: Codable, Equatable {
+    let profile: ITRAProfileSummary
+    let summaryStats: ITRASummaryStats
+    let rankings: ITRARankingStats
+    let raceResults: [ITRARaceResult]
+    let bestItems: [ITRABestItem]
+    let dataSource: String
+    let isPartial: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case profile, rankings
+        case summaryStats = "summary_stats"
+        case raceResults = "race_results"
+        case bestItems = "best_items"
+        case dataSource = "data_source"
+        case isPartial = "is_partial"
+    }
+}
+
+struct ITRAProfileSummary: Codable, Equatable {
+    let runnerID: String
+    let profileURL: String
+    let displayName: String?
+    let gender: String?
+    let nationality: String?
+    let age: String?
+    let ageGroup: String?
+    let performanceIndex: Int?
+    let publicLevel: String?
+    let lastCheckedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case gender, nationality, age
+        case runnerID = "runner_id"
+        case profileURL = "profile_url"
+        case displayName = "display_name"
+        case ageGroup = "age_group"
+        case performanceIndex = "performance_index"
+        case publicLevel = "public_level"
+        case lastCheckedAt = "last_checked_at"
+    }
+}
+
+struct ITRASummaryStats: Codable, Equatable {
+    let totalRaces: Int?
+    let finishRate: Double?
+    let totalTime: String?
+    let totalDistanceKM: Double?
+    let totalElevationGainM: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case totalRaces = "total_races"
+        case finishRate = "finish_rate"
+        case totalTime = "total_time"
+        case totalDistanceKM = "total_distance_km"
+        case totalElevationGainM = "total_elevation_gain_m"
+    }
+}
+
+struct ITRARankingStats: Codable, Equatable {
+    let countryRank: String?
+    let countryCount: String?
+    let continentRank: String?
+    let continentCount: String?
+    let worldRank: String?
+    let worldCount: String?
+    let worldPercentile: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case countryRank = "country_rank"
+        case countryCount = "country_count"
+        case continentRank = "continent_rank"
+        case continentCount = "continent_count"
+        case worldRank = "world_rank"
+        case worldCount = "world_count"
+        case worldPercentile = "world_percentile"
+    }
+}
+
+struct ITRARaceResult: Codable, Identifiable, Equatable {
+    let date: String?
+    let name: String?
+    let localName: String?
+    let country: String?
+    let status: String?
+    let itraPoints: Int?
+    let time: String?
+    let distanceKM: Double?
+    let elevationGainM: Int?
+    let averagePace: String?
+    let effortPace: String?
+    let rank: String?
+    let rankTotal: String?
+    let genderRank: String?
+    let genderTotal: String?
+    let totalParticipants: Int?
+    let finisherLevel: Int?
+    let mountainLevel: Int?
+    let distanceCategory: String?
+
+    var id: String { "\(date ?? "")-\(name ?? UUID().uuidString)" }
+
+    enum CodingKeys: String, CodingKey {
+        case date, name, country, status, time, rank
+        case localName = "local_name"
+        case itraPoints = "itra_points"
+        case distanceKM = "distance_km"
+        case elevationGainM = "elevation_gain_m"
+        case averagePace = "average_pace"
+        case effortPace = "effort_pace"
+        case rankTotal = "rank_total"
+        case genderRank = "gender_rank"
+        case genderTotal = "gender_total"
+        case totalParticipants = "total_participants"
+        case finisherLevel = "finisher_level"
+        case mountainLevel = "mountain_level"
+        case distanceCategory = "distance_category"
+    }
+}
+
+struct ITRABestItem: Codable, Identifiable, Equatable {
+    let title: String
+    let value: String
+    let raceName: String?
+
+    var id: String { "\(title)-\(value)-\(raceName ?? "")" }
+
+    enum CodingKeys: String, CodingKey {
+        case title, value
+        case raceName = "race_name"
+    }
+}
+
+struct ITRAParseHTMLRequest: Encodable {
+    let html: String
+    let profileURL: String?
+
+    enum CodingKeys: String, CodingKey {
+        case html
+        case profileURL = "profile_url"
+    }
 }
 
 struct ActivityFeeling: Encodable {

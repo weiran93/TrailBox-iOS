@@ -88,7 +88,11 @@ final class APIClient {
             let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
             throw APIError.server(detail ?? String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)")
         }
-        return try decoder.decode(Response.self, from: data)
+        do {
+            return try decoder.decode(Response.self, from: data)
+        } catch {
+            throw APIError.server("服务器返回的数据格式不正确，请确认服务已更新后重试")
+        }
     }
 
     func uploadTrack(fileURL: URL, name: String?, city: String, tags: String, sport: String, isPublic: Bool, showContributor: Bool, token: String) async throws -> Track {
@@ -116,7 +120,40 @@ final class APIClient {
         return try decoder.decode(Track.self, from: data)
     }
 
-    func uploadAdminTracks(fileURLs: [URL], token: String) async throws -> AdminBatchUploadResult {
+    func previewAdminTracks(fileURLs: [URL], keepOriginalName: Bool = true, token: String) async throws -> AdminBatchPreviewResult {
+        guard let url = URL(string: "/admin/tracks/batch/preview", relativeTo: AppConfiguration.apiBaseURL)?.absoluteURL else { throw APIError.invalidResponse }
+        let boundary = "TrailBox-\(UUID().uuidString)"
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"keep_original_name\"\r\n\r\n\(keepOriginalName ? "true" : "false")\r\n".utf8))
+        for fileURL in fileURLs {
+            let filename = fileURL.lastPathComponent
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8))
+            body.append(try Data(contentsOf: fileURL))
+            body.append(Data("\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
+
+        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw APIError.server(detail ?? "批量解析失败")
+        }
+        return try decoder.decode(AdminBatchPreviewResult.self, from: data)
+    }
+
+    func commitAdminTracks(draftID: String, items: [AdminBatchCommitItem], token: String) async throws -> AdminBatchUploadResult {
+        struct Request: Encodable { let draftID: String; let items: [AdminBatchCommitItem] }
+        return try await request("/admin/tracks/batch/commit", method: "POST", body: Request(draftID: draftID, items: items), token: token)
+    }
+
+    func uploadAdminTracks(fileURLs: [URL], keepOriginalName: Bool = true, token: String) async throws -> AdminBatchUploadResult {
         guard let url = URL(string: "/admin/tracks/batch", relativeTo: AppConfiguration.apiBaseURL)?.absoluteURL else { throw APIError.invalidResponse }
         let boundary = "TrailBox-\(UUID().uuidString)"
         var request = URLRequest(url: url)
@@ -125,6 +162,7 @@ final class APIClient {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         var body = Data()
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"keep_original_name\"\r\n\r\n\(keepOriginalName ? "true" : "false")\r\n".utf8))
         for fileURL in fileURLs {
             let filename = fileURL.lastPathComponent
             body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8))
@@ -156,6 +194,55 @@ final class APIClient {
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else { throw APIError.server("无法自动推荐路线信息") }
         return try decoder.decode(TrackMetadataSuggestion.self, from: data)
+    }
+
+    func getITRAProfile(token: String) async throws -> ITRAProfile? {
+        try await request("/users/me/itra-profile", token: token)
+    }
+
+    func searchITRAProfile(query: String, token: String) async throws -> ITRASearchResponse {
+        guard var components = URLComponents(url: AppConfiguration.apiBaseURL.appendingPathComponent("integrations/itra/search"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidResponse
+        }
+        components.queryItems = [URLQueryItem(name: "query", value: query)]
+        guard let url = components.url else { throw APIError.invalidResponse }
+        return try await request(url.absoluteString, token: token)
+    }
+
+    func updateITRAProfile(_ profile: ITRAProfileUpdateRequest, token: String) async throws -> ITRAProfile {
+        try await request("/users/me/itra-profile", method: "PATCH", body: profile, token: token)
+    }
+
+    func getITRAProfileDetail(runnerID: String, profileURL: String?, token: String) async throws -> ITRAProfileDetail {
+        var path = "/integrations/itra/profile/\(runnerID)"
+        if let profileURL, var components = URLComponents(string: path) {
+            components.queryItems = [URLQueryItem(name: "profile_url", value: profileURL)]
+            path = components.string ?? path
+        }
+        return try await request(path, token: token)
+    }
+
+    func parseITRAProfileHTML(_ html: String, profileURL: String?, token: String) async throws -> ITRAProfileDetail {
+        let requestBody = ITRAParseHTMLRequest(html: html, profileURL: profileURL)
+        return try await request("/integrations/itra/profile/parse-html", method: "POST", body: requestBody, token: token)
+    }
+
+    func fetchPublicITRAHTML(profileURL: String) async throws -> String {
+        guard let url = URL(string: profileURL) else { throw APIError.invalidResponse }
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200..<300).contains(http.statusCode), let html = String(data: data, encoding: .utf8) else {
+            throw APIError.server("无法读取 ITRA 公开资料页")
+        }
+        return html
+    }
+
+    func deleteITRAProfile(token: String) async throws {
+        try await requestVoid("/users/me/itra-profile", method: "DELETE", token: token)
     }
 
     func requestVoid(_ path: String, method: String, body: (any Encodable)? = nil, token: String) async throws {

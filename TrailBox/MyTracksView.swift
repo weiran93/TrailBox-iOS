@@ -42,17 +42,64 @@ final class MyTracksViewModel: ObservableObject {
     }
 }
 
+@MainActor
+final class ITRAProfileViewModel: ObservableObject {
+    @Published private(set) var profile: ITRAProfile?
+    @Published private(set) var isLoading = false
+    @Published private(set) var errorMessage: String?
+
+    func load(token: String) async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            profile = try await APIClient.shared.getITRAProfile(token: token)
+        } catch {
+            errorMessage = ErrorMessage.display(error)
+        }
+        isLoading = false
+    }
+
+    func setProfile(_ profile: ITRAProfile?) {
+        self.profile = profile
+        errorMessage = nil
+    }
+}
+
+@MainActor
+final class ITRAProfileDetailViewModel: ObservableObject {
+    @Published private(set) var detail: ITRAProfileDetail?
+    @Published private(set) var isLoading = false
+    @Published private(set) var errorMessage: String?
+
+    func load(profile: ITRAProfile, token: String, forceRefresh: Bool = false) async {
+        guard forceRefresh || detail == nil else { return }
+        isLoading = true
+        errorMessage = nil
+        do {
+            var loaded = try await APIClient.shared.getITRAProfileDetail(runnerID: profile.runnerID, profileURL: profile.profileURL, token: token)
+            if loaded.isPartial, let html = try? await APIClient.shared.fetchPublicITRAHTML(profileURL: profile.profileURL) {
+                loaded = try await APIClient.shared.parseITRAProfileHTML(html, profileURL: profile.profileURL, token: token)
+            }
+            detail = loaded
+        } catch {
+            errorMessage = ErrorMessage.display(error)
+        }
+        isLoading = false
+    }
+}
+
 struct MyTracksView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = MyTracksViewModel()
+    @StateObject private var itraViewModel = ITRAProfileViewModel()
     @State private var showSettings = false
     @State private var navigationPath: [Destination] = []
     @State private var statsRange: StatsRange = .month
 
     private enum StatsRange: String, CaseIterable, Identifiable { case month = "本月", all = "全部"; var id: String { rawValue } }
-    private enum Destination: Hashable { case upload, track(String) }
+    private enum Destination: Hashable { case upload, track(String), itraProfile }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -70,11 +117,23 @@ struct MyTracksView: View {
                 }.padding(.horizontal, 16).frame(height: 56).background(.white)
                 switch viewModel.state {
                 case .loading: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .empty: EmptyStateView(title: "还没有轨迹", systemImage: "figure.run", message: "从运动 App 分享 .fit 或 .gpx 文件到小野box")
+                case .empty:
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            itraProfileCard
+                            EmptyStateView(title: "还没有轨迹", systemImage: "figure.run", message: "从运动 App 分享 .fit 或 .gpx 文件到小野box")
+                                .frame(minHeight: 260)
+                        }
+                        .padding(16)
+                    }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        Color.clear.frame(height: RootView.bottomBarHeight)
+                    }
                 case .failed(let message): EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: message)
                 case .content:
                     ScrollView {
                         LazyVStack(spacing: 12) {
+                            itraProfileCard
                             summary
                             ForEach(viewModel.tracks) { track in
                                 NavigationLink {
@@ -103,7 +162,9 @@ struct MyTracksView: View {
             }.background(TrailBoxColor.background).toolbar(.hidden, for: .navigationBar)
                 .task(id: session.token) {
                     if let token = session.token {
-                        await viewModel.load(token: token)
+                        async let tracks: Void = viewModel.load(token: token)
+                        async let itra: Void = itraViewModel.load(token: token)
+                        _ = await (tracks, itra)
                     }
                 }
                 .sheet(isPresented: $showSettings) { SettingsView() }
@@ -116,12 +177,31 @@ struct MyTracksView: View {
                         }
                     case .track(let trackID):
                         TrackDetailView(trackID: trackID, isPublicSource: false, onDeleted: refreshTracks)
+                    case .itraProfile:
+                        if let profile = itraViewModel.profile {
+                            ITRAProfileDetailView(profile: profile) {
+                                itraViewModel.setProfile(nil)
+                            }
+                        } else {
+                            ITRAProfileLookupView(profile: itraViewModel.profile) { profile in
+                                itraViewModel.setProfile(profile)
+                            }
+                        }
                     }
                 }
         }
         .onChange(of: navigationPath) { newValue in
             bottomBarVisibility.isVisible = newValue.isEmpty
         }
+    }
+
+    private var itraProfileCard: some View {
+        Button {
+            navigationPath.append(.itraProfile)
+        } label: {
+            ITRAProfileCard(profile: itraViewModel.profile, isLoading: itraViewModel.isLoading)
+        }
+        .buttonStyle(.plain)
     }
 
     private var summary: some View {
@@ -151,6 +231,735 @@ struct MyTracksView: View {
     private func refreshTracks() async {
         guard let token = session.token else { return }
         await viewModel.load(token: token, isRefresh: true)
+    }
+}
+
+private struct ITRAProfileCard: View {
+    let profile: ITRAProfile?
+    let isLoading: Bool
+
+    var body: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text("ITRA 能力资料").font(.headline).foregroundStyle(TrailBoxColor.text)
+                            Text(profile == nil ? "实验功能" : "已绑定")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(profile == nil ? TrailBoxColor.primaryDark : .white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(profile == nil ? TrailBoxColor.primary.opacity(0.12) : TrailBoxColor.primaryDark)
+                                .clipShape(Capsule())
+                        }
+                        Text(profile == nil ? "关联你的 ITRA 公开资料，展示可查询到的分数和基础信息。" : (profile?.displayName ?? "ITRA Runner"))
+                            .font(.subheadline)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    if isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                }
+
+                if let profile {
+                    HStack(alignment: .lastTextBaseline, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(profile.performanceIndex.map(String.init) ?? "未公开")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                            Text("Performance Index").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("ITRA ID \(profile.runnerID)")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(TrailBoxColor.text)
+                            Text(profileMeta(profile))
+                                .font(.caption)
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                    if let summary = profile.latestResultSummary, !summary.isEmpty {
+                        Text(summary)
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                            .lineLimit(2)
+                    }
+                    if let date = profile.lastCheckedAt {
+                        Text("更新于 \(DisplayFormat.date(date))")
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                } else {
+                    HStack {
+                        Label("查询 ITRA 资料", systemImage: "magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+
+    private func profileMeta(_ profile: ITRAProfile) -> String {
+        [profile.nationality, profile.gender, profile.age.map { "\($0) 岁" }, profile.ageGroup].compactMap { value in
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }.joined(separator: " · ")
+    }
+}
+
+struct ITRAProfileLookupView: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var profile: ITRAProfile?
+    @State private var query: String
+    @State private var candidates: [ITRASearchCandidate] = []
+    @State private var isSearching = false
+    @State private var isSavingRunnerID: String?
+    @State private var hasSearched = false
+    @State private var errorMessage: String?
+
+    let onProfileChanged: (ITRAProfile?) -> Void
+
+    init(profile: ITRAProfile?, onProfileChanged: @escaping (ITRAProfile?) -> Void) {
+        _profile = State(initialValue: profile)
+        _query = State(initialValue: profile?.displayName ?? "")
+        self.onProfileChanged = onProfileChanged
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if let profile {
+                    linkedProfileSection(profile)
+                }
+                searchSection
+                resultSection
+            }
+            .padding(16)
+        }
+        .background(TrailBoxColor.background)
+        .navigationTitle("ITRA 资料")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("ITRA 查询", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var searchSection: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("查询资料").font(.headline).foregroundStyle(TrailBoxColor.text)
+                TextField("例如 ZHAO Weiran 或 ITRA 链接", text: $query)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(TrailBoxColor.background)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Text("ITRA 没有稳定公开 API。这里仅查询公开可见资料，结果可能不完整；也可以直接粘贴 ITRA 个人页链接。")
+                    .font(.caption)
+                    .foregroundStyle(TrailBoxColor.secondaryText)
+                Button {
+                    search()
+                } label: {
+                    HStack {
+                        if isSearching { ProgressView().controlSize(.small).tint(.white) }
+                        Text(isSearching ? "查询中…" : "查询 ITRA 资料")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || isSearching ? TrailBoxColor.border : TrailBoxColor.primaryDark)
+                    .foregroundStyle(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || isSearching ? TrailBoxColor.secondaryText : .white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || isSearching)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var resultSection: some View {
+        if !candidates.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("查询结果").font(.headline).foregroundStyle(TrailBoxColor.text)
+                ForEach(candidates) { candidate in
+                    ITRACandidateCard(candidate: candidate, isSaving: isSavingRunnerID == candidate.runnerID) {
+                        bind(candidate)
+                    }
+                }
+            }
+        } else if hasSearched {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("未找到匹配资料").font(.headline).foregroundStyle(TrailBoxColor.text)
+                    Text("可以尝试英文名、姓名中间加空格，或直接粘贴 ITRA 个人页链接。")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+            }
+        }
+    }
+
+    private func linkedProfileSection(_ profile: ITRAProfile) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(profile.displayName ?? "ITRA Runner").font(.headline).foregroundStyle(TrailBoxColor.text)
+                    Spacer()
+                    Text("已绑定")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(TrailBoxColor.primaryDark)
+                        .clipShape(Capsule())
+                }
+                HStack(spacing: 24) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(profile.performanceIndex.map(String.init) ?? "未公开")
+                            .font(.title.bold())
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                        Text("Performance Index").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ITRA ID \(profile.runnerID)").font(.subheadline.weight(.semibold))
+                        Text([profile.nationality, profile.gender, profile.age.map { "\($0) 岁" }, profile.ageGroup].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                    Spacer()
+                }
+                if let summary = profile.latestResultSummary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .lineLimit(3)
+                }
+                HStack {
+                    Text("数据来自 ITRA 公开资料页")
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                    Spacer()
+                    Button("解除绑定", role: .destructive) { deleteProfile() }
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
+        }
+    }
+
+    private func search() {
+        guard let token = session.token else { return }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return }
+        isSearching = true
+        hasSearched = false
+        errorMessage = nil
+        Task {
+            do {
+                let response = try await APIClient.shared.searchITRAProfile(query: trimmed, token: token)
+                candidates = response.candidates
+                hasSearched = true
+            } catch {
+                candidates = []
+                hasSearched = true
+                errorMessage = ErrorMessage.display(error)
+            }
+            isSearching = false
+        }
+    }
+
+    private func bind(_ candidate: ITRASearchCandidate) {
+        guard let token = session.token else { return }
+        isSavingRunnerID = candidate.runnerID
+        errorMessage = nil
+        Task {
+            do {
+                let request = ITRAProfileUpdateRequest(
+                    runnerID: candidate.runnerID,
+                    profileURL: candidate.profileURL,
+                    displayName: candidate.displayName,
+                    gender: candidate.gender,
+                    nationality: candidate.nationality,
+                    age: candidate.age,
+                    ageGroup: candidate.ageGroup,
+                    performanceIndex: candidate.performanceIndex,
+                    latestResultSummary: candidate.latestResultSummary,
+                    lookupSource: candidate.lookupSource,
+                    lookupConfidence: candidate.lookupConfidence,
+                    lastQuery: query.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+                let updated = try await APIClient.shared.updateITRAProfile(request, token: token)
+                profile = updated
+                onProfileChanged(updated)
+                dismiss()
+            } catch {
+                errorMessage = ErrorMessage.display(error)
+            }
+            isSavingRunnerID = nil
+        }
+    }
+
+    private func deleteProfile() {
+        guard let token = session.token else { return }
+        Task {
+            do {
+                try await APIClient.shared.deleteITRAProfile(token: token)
+                profile = nil
+                candidates = []
+                onProfileChanged(nil)
+            } catch {
+                errorMessage = ErrorMessage.display(error)
+            }
+        }
+    }
+}
+
+private struct ITRACandidateCard: View {
+    let candidate: ITRASearchCandidate
+    let isSaving: Bool
+    let bindAction: () -> Void
+
+    var body: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(candidate.displayName ?? "ITRA Runner")
+                            .font(.headline)
+                            .foregroundStyle(TrailBoxColor.text)
+                        Text("ITRA ID \(candidate.runnerID)")
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(candidate.performanceIndex.map(String.init) ?? "未公开")
+                            .font(.title3.bold())
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                        Text("PI").font(.caption2).foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                }
+                Text(candidateMeta)
+                    .font(.caption)
+                    .foregroundStyle(TrailBoxColor.secondaryText)
+                    .lineLimit(2)
+                if let summary = candidate.latestResultSummary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .lineLimit(2)
+                }
+                HStack {
+                    Text("来自 ITRA 公开资料页")
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                    Spacer()
+                    Button(action: bindAction) {
+                        Text(isSaving ? "绑定中…" : "绑定这个资料")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .disabled(isSaving)
+                }
+            }
+        }
+    }
+
+    private var candidateMeta: String {
+        let source: String
+        switch candidate.lookupSource {
+        case "manual_url": source = "链接解析"
+        case "itra_profile_page": source = "公开资料页"
+        case "seeded_public_profile": source = "公开资料"
+        default: source = "公开搜索"
+        }
+        let confidence = "\(Int(candidate.lookupConfidence * 100))%"
+        let base = [candidate.nationality, candidate.gender, candidate.age.map { "\($0) 岁" }, candidate.ageGroup].compactMap { $0 }.joined(separator: " · ")
+        return base.isEmpty ? "\(source) · 匹配度 \(confidence)" : "\(base) · \(source) · 匹配度 \(confidence)"
+    }
+}
+
+struct ITRAProfileDetailView: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel = ITRAProfileDetailViewModel()
+    @State private var selectedTab: Tab = .races
+    @State private var actionError: String?
+
+    let profile: ITRAProfile
+    let onDeleted: () -> Void
+
+    private enum Tab: String, CaseIterable, Identifiable {
+        case races = "比赛记录"
+        case stats = "统计"
+        case rankings = "排名"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if let detail = viewModel.detail {
+                    profileHeader(detail)
+                    summaryGrid(detail.summaryStats)
+                    Picker("视图", selection: $selectedTab) {
+                        ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+
+                    switch selectedTab {
+                    case .races:
+                        raceList(detail.raceResults)
+                    case .stats:
+                        statsSection(detail)
+                    case .rankings:
+                        rankingsSection(detail.rankings)
+                    }
+                    if detail.isPartial {
+                        Text("当前只解析到部分公开资料，可稍后刷新重试。")
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                } else if viewModel.isLoading {
+                    ProgressView("加载 ITRA 资料中…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 80)
+                } else if let message = viewModel.errorMessage {
+                    EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: message)
+                        .frame(minHeight: 320)
+                }
+            }
+            .padding(16)
+        }
+        .background(TrailBoxColor.background)
+        .navigationTitle("ITRA 资料")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("刷新") {
+                    if let token = session.token {
+                        Task { await viewModel.load(profile: profile, token: token, forceRefresh: true) }
+                    }
+                }
+                .disabled(viewModel.isLoading)
+            }
+        }
+        .task(id: profile.runnerID) {
+            if let token = session.token {
+                await viewModel.load(profile: profile, token: token)
+            }
+        }
+        .alert("ITRA 资料", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(actionError ?? "")
+        }
+    }
+
+    private func profileHeader(_ detail: ITRAProfileDetail) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 14) {
+                    ZStack(alignment: .bottomTrailing) {
+                        Circle().fill(TrailBoxColor.background).frame(width: 82, height: 82)
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 42))
+                            .foregroundStyle(TrailBoxColor.secondaryText.opacity(0.7))
+                        Text(flagEmoji(detail.profile.nationality))
+                            .font(.title3)
+                            .frame(width: 28, height: 28)
+                            .background(.white)
+                            .clipShape(Circle())
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Text(detail.profile.displayName ?? profile.displayName ?? "ITRA Runner")
+                                .font(.title2.bold())
+                                .foregroundStyle(TrailBoxColor.text)
+                            if detail.profile.gender?.lowercased().hasPrefix("m") == true {
+                                Image(systemName: "mars").foregroundStyle(.cyan)
+                            }
+                        }
+                        Text([detail.profile.ageGroup, detail.profile.runnerID].compactMap { $0 }.joined(separator: "  |  "))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.text)
+                        HStack(spacing: 0) {
+                            Text("表现分：\(detail.profile.performanceIndex.map(String.init) ?? "未公开")")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .frame(height: 42)
+                                .background(.black)
+                            Text(detail.profile.publicLevel ?? "等级未公开")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .frame(height: 42)
+                                .background(TrailBoxColor.primary.opacity(0.7))
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+                    Spacer()
+                }
+                HStack {
+                    Text("数据源：\(sourceLabel(detail.dataSource))")
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                    Spacer()
+                    Button("解除绑定", role: .destructive) { deleteProfile() }
+                        .font(.caption.weight(.semibold))
+                }
+            }
+        }
+    }
+
+    private func summaryGrid(_ stats: ITRASummaryStats) -> some View {
+        SectionCard {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                compactMetric("完赛场次", stats.totalRaces.map(String.init) ?? "-")
+                compactMetric("总时间", stats.totalTime ?? "-")
+                compactMetric("总距离", stats.totalDistanceKM.map { String(format: "%.1f km", $0) } ?? "-")
+                compactMetric("总爬升", stats.totalElevationGainM.map { "+\($0.formatted()) m" } ?? "-")
+            }
+        }
+    }
+
+    private func raceList(_ races: [ITRARaceResult]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(races) { race in
+                NavigationLink {
+                    ITRARaceResultDetailView(race: race)
+                } label: {
+                    ITRARaceResultCard(race: race)
+                }
+                .buttonStyle(.plain)
+            }
+            if races.isEmpty {
+                SectionCard {
+                    Text("暂无公开比赛记录").foregroundStyle(TrailBoxColor.secondaryText)
+                }
+            }
+        }
+    }
+
+    private func statsSection(_ detail: ITRAProfileDetail) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionCard {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 18) {
+                    metricBlock("总场次", detail.summaryStats.totalRaces.map(String.init) ?? "-")
+                    metricBlock("完赛率", detail.summaryStats.finishRate.map { String(format: "%.0f %%", $0) } ?? "-")
+                    metricBlock("总时间", detail.summaryStats.totalTime ?? "-")
+                    metricBlock("总距离", detail.summaryStats.totalDistanceKM.map { String(format: "%.1f km", $0) } ?? "-")
+                    metricBlock("总爬升", detail.summaryStats.totalElevationGainM.map { "+\($0.formatted()) m" } ?? "-")
+                }
+            }
+            ForEach(detail.bestItems) { item in
+                SectionCard {
+                    HStack(alignment: .top) {
+                        Text(item.title).font(.subheadline).foregroundStyle(TrailBoxColor.text)
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(item.value).font(.headline.bold()).foregroundStyle(TrailBoxColor.text)
+                            if let raceName = item.raceName {
+                                Text(raceName).font(.caption).foregroundStyle(TrailBoxColor.secondaryText).multilineTextAlignment(.trailing)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func rankingsSection(_ rankings: ITRARankingStats) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("ITRA 表现分排名（世界前 \(rankings.worldPercentile.map { String(format: "%.2f", $0) } ?? "-") %）")
+                    .font(.headline)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 18) {
+                    metricBlock("国家排名", rankingText(rankings.countryRank, rankings.countryCount))
+                    metricBlock("亚洲排名", rankingText(rankings.continentRank, rankings.continentCount))
+                    metricBlock("世界排名", rankingText(rankings.worldRank, rankings.worldCount))
+                }
+            }
+        }
+    }
+
+    private func deleteProfile() {
+        guard let token = session.token else { return }
+        Task {
+            do {
+                try await APIClient.shared.deleteITRAProfile(token: token)
+                onDeleted()
+                dismiss()
+            } catch {
+                actionError = ErrorMessage.display(error)
+            }
+        }
+    }
+
+    private func compactMetric(_ title: String, _ value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(TrailBoxColor.secondaryText).lineLimit(1)
+            Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.text).lineLimit(1).minimumScaleFactor(0.7)
+        }
+    }
+
+    private func metricBlock(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+            Text(value).font(.title3.bold()).foregroundStyle(TrailBoxColor.text).minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func rankingText(_ rank: String?, _ count: String?) -> String {
+        guard let rank else { return "-" }
+        return count.map { "\(rank)/\($0)" } ?? rank
+    }
+
+    private func sourceLabel(_ value: String) -> String {
+        switch value {
+        case "client_html": return "客户端公开页面解析"
+        case "itra_profile_page": return "ITRA 公开资料页"
+        case "seeded_public_profile": return "公开资料快照"
+        default: return value
+        }
+    }
+
+    private func flagEmoji(_ nationality: String?) -> String {
+        nationality == "China" || nationality == "CHN" ? "🇨🇳" : "🏳️"
+    }
+}
+
+private struct ITRARaceResultCard: View {
+    let race: ITRARaceResult
+
+    var body: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Circle().fill(TrailBoxColor.primary).frame(width: 12, height: 12)
+                    Text(race.date ?? "-").font(.headline)
+                    Text("中国大陆").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText)
+                    Spacer()
+                    if let points = race.itraPoints {
+                        Text("Finisher  iTRA \(points)")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color(red: 205 / 255, green: 205 / 255, blue: 0))
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+                }
+                Text(race.name ?? "未命名比赛")
+                    .font(.headline.bold())
+                    .foregroundStyle(TrailBoxColor.text)
+                    .underline()
+                if let localName = race.localName {
+                    Text(localName).font(.subheadline.bold()).foregroundStyle(TrailBoxColor.text)
+                }
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    raceMetric("成绩", race.time ?? "-")
+                    raceMetric("组别", raceGroupText)
+                    raceMetric("平均配速", race.averagePace ?? "-")
+                    raceMetric("等强配速", race.effortPace ?? "-")
+                    raceMetric("总排名", race.rank.map { "\($0)/\(race.rankTotal ?? "-")" } ?? "-")
+                    raceMetric("性别排名", race.genderRank.map { "\($0)/\(race.genderTotal ?? "-")" } ?? "-")
+                }
+            }
+        }
+    }
+
+    private func raceMetric(_ title: String, _ value: String) -> some View {
+        HStack(spacing: 4) {
+            Text("\(title)：").foregroundStyle(TrailBoxColor.secondaryText)
+            Text(value.isEmpty ? "-" : value).foregroundStyle(title == "成绩" ? .orange : TrailBoxColor.text)
+        }
+        .font(.subheadline)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var raceGroupText: String {
+        [
+            race.distanceKM.map { String(format: "%.0fkm", $0) },
+            race.elevationGainM.map { "\($0)m+" }
+        ]
+        .compactMap { $0 }
+        .joined(separator: "/")
+    }
+}
+
+struct ITRARaceResultDetailView: View {
+    let race: ITRARaceResult
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(race.name ?? "比赛详情")
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(TrailBoxColor.text)
+                if let localName = race.localName {
+                    Text(localName).font(.title2.bold()).foregroundStyle(TrailBoxColor.text)
+                }
+                Text("🇨🇳 China").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText)
+                SectionCard {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 18) {
+                        detailMetric("ITRA积分", race.itraPoints.map(String.init) ?? "-")
+                        detailMetric("距离", race.distanceKM.map { String(format: "%.2fkm", $0) } ?? "-")
+                        detailMetric("累计爬升", race.elevationGainM.map { "+\($0)m" } ?? "-")
+                        detailMetric("参赛人数", race.totalParticipants.map(String.init) ?? race.rankTotal ?? "-")
+                        detailMetric("比赛日期", race.date ?? "-")
+                        detailMetric("成绩", race.time ?? "-")
+                        detailMetric("山地等级", race.mountainLevel.map(String.init) ?? "-")
+                        detailMetric("完赛最低表现分", race.finisherLevel.map(String.init) ?? "-")
+                    }
+                }
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("个人成绩").font(.headline)
+                        detailRow("总排名", race.rank.map { "\($0)/\(race.rankTotal ?? "-")" } ?? "-")
+                        detailRow("性别排名", race.genderRank.map { "\($0)/\(race.genderTotal ?? "-")" } ?? "-")
+                        detailRow("平均配速", race.averagePace ?? "-")
+                        detailRow("等强配速", race.effortPace ?? "-")
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .background(TrailBoxColor.background)
+        .navigationTitle("比赛详情")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func detailMetric(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+            Text(value).font(.headline).foregroundStyle(TrailBoxColor.text)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func detailRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title).foregroundStyle(TrailBoxColor.secondaryText)
+            Spacer()
+            Text(value).fontWeight(.semibold)
+        }
+        .font(.subheadline)
     }
 }
 
@@ -399,7 +1208,7 @@ struct AdminDashboardView: View {
     @State private var trackPendingDeletion: Track?
     @State private var actionError: String?
     var body: some View {
-        Group { if let stats { List { Section("统计") { metric("全部轨迹", stats.total); metric("公开路线", stats.public); metric("私有记录", stats.private) }; Section("管理工具") { NavigationLink("批量上传轨迹") { AdminBatchUploadView() }; NavigationLink("标签配置") { AdminTagSettingsView() } }; Section("筛选") { TextField("搜索名称、城市或标签", text: $query).onSubmit { Task { await loadTracks() } }; Toggle("仅公开路线", isOn: $publicOnly).onChange(of: publicOnly) { _ in Task { await loadTracks() } } }; Section("最近轨迹") { ForEach(tracks) { track in VStack(alignment: .leading, spacing: 3) { Text(track.name); Text("\(track.city ?? "-") · \(track.isPublic ? "公开" : "私有")").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }.swipeActions(allowsFullSwipe: false) { Button("删除", role: .destructive) { trackPendingDeletion = track } } } } } } else if let error { EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: error) } else { ProgressView() } }
+        Group { if let stats { List { Section("统计") { metric("全部轨迹", stats.total); metric("公开路线", stats.public); metric("私有记录", stats.private) }; Section("管理工具") { NavigationLink("批量上传轨迹") { AdminBatchUploadView() }; NavigationLink("标签配置") { AdminTagSettingsView() } }; Section("筛选") { TextField("搜索名称、城市或标签", text: $query).onSubmit { Task { await loadTracks() } }; Toggle("仅公开路线", isOn: $publicOnly).onChange(of: publicOnly) { _ in Task { await loadTracks() } } }; Section("最近轨迹") { ForEach(tracks) { track in NavigationLink { AdminTrackEditView(track: track) { Task { await loadTracks() } } } label: { VStack(alignment: .leading, spacing: 3) { Text(track.name); Text("\(track.city ?? "-") · \(track.isPublic ? "公开" : "私有")").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) } }.swipeActions(allowsFullSwipe: false) { Button("删除", role: .destructive) { trackPendingDeletion = track } } } } } } else if let error { EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: error) } else { ProgressView() } }
             .navigationTitle("管理后台").task { await load() }
             .confirmationDialog("删除轨迹？", isPresented: Binding(get: { trackPendingDeletion != nil }, set: { if !$0 { trackPendingDeletion = nil } }), titleVisibility: .visible) {
                 Button("删除", role: .destructive) { if let track = trackPendingDeletion { delete(track) } }
@@ -411,6 +1220,132 @@ struct AdminDashboardView: View {
     private func load() async { guard let token = session.token else { return }; do { stats = try await APIClient.shared.request("/admin/stats", token: token); await loadTracks() } catch { self.error = error.localizedDescription } }
     private func loadTracks() async { guard let token = session.token else { return }; var path = "/admin/tracks?limit=20"; if !query.isEmpty { path += "&q=" + query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)! }; if publicOnly { path += "&is_public=true" }; do { tracks = try await APIClient.shared.request(path, token: token) } catch { self.error = error.localizedDescription } }
     private func delete(_ track: Track) { guard let token = session.token else { return }; trackPendingDeletion = nil; Task { do { try await APIClient.shared.requestVoid("/admin/tracks/\(track.id)", method: "DELETE", token: token); tracks.removeAll { $0.id == track.id }; await load() } catch { actionError = error.localizedDescription } } }
+}
+
+struct AdminTrackEditView: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    let track: Track
+    let onSaved: () -> Void
+
+    @State private var name: String
+    @State private var description: String
+    @State private var city: String
+    @State private var tags: String
+    @State private var sport: String
+    @State private var isPublic: Bool
+    @State private var showContributor: Bool
+    @State private var isLoadingDetail = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(track: Track, onSaved: @escaping () -> Void) {
+        self.track = track
+        self.onSaved = onSaved
+        _name = State(initialValue: track.name)
+        _description = State(initialValue: track.description ?? "")
+        _city = State(initialValue: track.city ?? "")
+        _tags = State(initialValue: track.tags ?? "")
+        _sport = State(initialValue: track.sport ?? "越野跑")
+        _isPublic = State(initialValue: track.isPublic)
+        _showContributor = State(initialValue: track.showContributor)
+    }
+
+    var body: some View {
+        Form {
+            Section("基础信息") {
+                TextField("名称", text: $name)
+                TextField("城市", text: $city)
+                TextField("标签", text: $tags)
+                Picker("运动类型", selection: $sport) {
+                    Text("越野跑").tag("越野跑")
+                    Text("徒步").tag("徒步")
+                }
+            }
+            Section("描述") {
+                TextEditor(text: $description).frame(minHeight: 100)
+            }
+            Section("发布设置") {
+                Toggle("公开到探索路线", isOn: $isPublic)
+                Toggle("展示贡献者昵称", isOn: $showContributor)
+            }
+            Section("轨迹数据") {
+                LabeledContent("距离", value: DisplayFormat.distance(track.distanceM))
+                LabeledContent("爬升", value: DisplayFormat.elevation(track.elevationGainM))
+            }
+            if isLoadingDetail {
+                Section { ProgressView("加载详情中…") }
+            }
+        }
+        .navigationTitle("编辑路线")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(isSaving ? "保存中…" : "保存") { save() }
+                    .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .task { await loadDetail() }
+        .alert("保存失败", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("确定", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    private func loadDetail() async {
+        guard let token = session.token else { return }
+        isLoadingDetail = true
+        do {
+            let detail: Track = try await APIClient.shared.request("/admin/tracks/\(track.id)", token: token)
+            name = detail.name
+            description = detail.description ?? ""
+            city = detail.city ?? ""
+            tags = detail.tags ?? ""
+            sport = detail.sport ?? "越野跑"
+            isPublic = detail.isPublic
+            showContributor = detail.showContributor
+        } catch {
+            errorMessage = ErrorMessage.display(error)
+        }
+        isLoadingDetail = false
+    }
+
+    private func save() {
+        struct Request: Encodable {
+            let name: String
+            let description: String?
+            let city: String?
+            let tags: String?
+            let sport: String
+            let isPublic: Bool
+            let showContributor: Bool
+        }
+        guard let token = session.token else { return }
+        func optional(_ value: String) -> String? {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = Request(
+            name: trimmedName,
+            description: optional(description),
+            city: optional(city),
+            tags: optional(tags),
+            sport: sport,
+            isPublic: isPublic,
+            showContributor: showContributor
+        )
+        isSaving = true
+        Task {
+            do {
+                let _: Track = try await APIClient.shared.request("/admin/tracks/\(track.id)", method: "PATCH", body: request, token: token)
+                onSaved()
+                dismiss()
+            } catch {
+                errorMessage = ErrorMessage.display(error)
+            }
+            isSaving = false
+        }
+    }
 }
 
 struct AdminTagSettingsView: View {
@@ -472,14 +1407,19 @@ struct AdminBatchUploadView: View {
     @State private var showFileImporter = false
     @State private var selectedFiles: [URL] = []
     @State private var isUploading = false
-    @State private var uploadedTracks: [Track] = []
+    @State private var draftID: String?
+    @State private var previewItems: [AdminBatchPreviewItem] = []
     @State private var errorMessage: String?
     @State private var showEditor = false
+    @State private var keepOriginalName = true
 
     var body: some View {
         Form {
             Section("上传收集的轨迹") {
-                Text("选择一个或多个 FIT、GPX 或 KML 文件。系统会自动识别名称、城市和标签，上传后可统一调整。")
+                Text("选择一个或多个 FIT、GPX 或 KML 文件。系统会先识别名称、城市和标签，确认保存后再发布。")
+                    .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
+                Toggle("保留轨迹原名", isOn: $keepOriginalName)
+                Text("关闭后将按起终点和沿途地标自动生成路线名。")
                     .font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
                 Button("选择文件") { showFileImporter = true }
                 if !selectedFiles.isEmpty {
@@ -498,7 +1438,7 @@ struct AdminBatchUploadView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(isUploading ? "上传中…" : "上传并编辑") { upload() }
+                Button(isUploading ? "解析中…" : "解析并编辑") { upload() }
                     .disabled(selectedFiles.isEmpty || isUploading)
             }
         }
@@ -506,7 +1446,11 @@ struct AdminBatchUploadView: View {
             guard case .success(let urls) = result else { return }
             selectedFiles = urls
         }
-        .navigationDestination(isPresented: $showEditor) { AdminBatchEditView(tracks: uploadedTracks) }
+        .navigationDestination(isPresented: $showEditor) {
+            if let draftID {
+                AdminBatchEditView(draftID: draftID, items: previewItems)
+            }
+        }
     }
 
     private func upload() {
@@ -517,13 +1461,14 @@ struct AdminBatchUploadView: View {
             let scopedFiles = files.filter { $0.startAccessingSecurityScopedResource() }
             defer { scopedFiles.forEach { $0.stopAccessingSecurityScopedResource() } }
             do {
-                let result = try await APIClient.shared.uploadAdminTracks(fileURLs: files, token: token)
-                if result.tracks.isEmpty {
+                let result = try await APIClient.shared.previewAdminTracks(fileURLs: files, keepOriginalName: keepOriginalName, token: token)
+                if result.items.isEmpty {
                     errorMessage = result.errors.map(\.error).joined(separator: "\n")
                 } else {
-                    uploadedTracks = result.tracks
+                    draftID = result.draftID
+                    previewItems = result.items
                     selectedFiles = []
-                    if !result.errors.isEmpty { errorMessage = "\(result.errors.count) 个文件上传失败：\(result.errors.map(\.error).joined(separator: "；"))" }
+                    if !result.errors.isEmpty { errorMessage = "\(result.errors.count) 个文件解析失败：\(result.errors.map(\.error).joined(separator: "；"))" }
                     showEditor = true
                 }
             } catch { errorMessage = error.localizedDescription }
@@ -535,6 +1480,7 @@ struct AdminBatchUploadView: View {
 struct AdminBatchEditView: View {
     struct EditableTrack: Identifiable {
         let id: String
+        let filename: String
         var name: String
         var city: String
         var tags: String
@@ -544,14 +1490,15 @@ struct AdminBatchEditView: View {
         let distanceM: Double
         let elevationGainM: Double
 
-        init(_ track: Track) {
-            id = track.id; name = track.name; city = track.city ?? ""; tags = track.tags ?? ""; sport = track.sport ?? "越野跑"
-            isPublic = track.isPublic; showContributor = track.showContributor; distanceM = track.distanceM; elevationGainM = track.elevationGainM
+        init(_ item: AdminBatchPreviewItem) {
+            id = item.id; filename = item.filename; name = item.name; city = item.city ?? ""; tags = item.tags ?? ""; sport = item.sport ?? "越野跑"
+            isPublic = item.isPublic; showContributor = item.showContributor; distanceM = item.distanceM; elevationGainM = item.elevationGainM
         }
     }
 
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
+    let draftID: String
     @State private var tracks: [EditableTrack]
     @State private var globalCity = ""
     @State private var globalTags = ""
@@ -561,7 +1508,10 @@ struct AdminBatchEditView: View {
     @State private var isSaving = false
     @State private var message: String?
 
-    init(tracks: [Track]) { _tracks = State(initialValue: tracks.map(EditableTrack.init)) }
+    init(draftID: String, items: [AdminBatchPreviewItem]) {
+        self.draftID = draftID
+        _tracks = State(initialValue: items.map(EditableTrack.init))
+    }
 
     var body: some View {
         Form {
@@ -576,6 +1526,9 @@ struct AdminBatchEditView: View {
             Section("逐条调整") {
                 ForEach($tracks) { $track in
                     VStack(alignment: .leading, spacing: 8) {
+                        Text(track.filename)
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
                         TextField("名称", text: $track.name)
                         TextField("城市", text: $track.city)
                         TextField("标签", text: $track.tags)
@@ -609,19 +1562,25 @@ struct AdminBatchEditView: View {
     }
 
     private func save() {
-        struct Item: Encodable {
-            let id: String; let name: String; let city: String?; let tags: String?; let sport: String; let isPublic: Bool; let showContributor: Bool
-            enum CodingKeys: String, CodingKey { case id, name, city, tags, sport; case isPublic = "is_public"; case showContributor = "show_contributor" }
-        }
-        struct Request: Encodable { let items: [Item] }
         guard let token = session.token else { return }
-        let items = tracks.map { Item(id: $0.id, name: $0.name, city: $0.city.isEmpty ? nil : $0.city, tags: $0.tags.isEmpty ? nil : $0.tags, sport: $0.sport, isPublic: $0.isPublic, showContributor: $0.showContributor) }
+        let items = tracks.map {
+            AdminBatchCommitItem(
+                id: $0.id,
+                filename: $0.filename,
+                name: $0.name,
+                city: $0.city.isEmpty ? nil : $0.city,
+                tags: $0.tags.isEmpty ? nil : $0.tags,
+                sport: $0.sport,
+                isPublic: $0.isPublic,
+                showContributor: $0.showContributor
+            )
+        }
         isSaving = true; message = nil
         Task {
             do {
-                let result: AdminBatchUploadResult = try await APIClient.shared.request("/admin/tracks/batch", method: "PATCH", body: Request(items: items), token: token)
-                if result.errors.isEmpty { message = "\(result.tracks.count) 条轨迹已保存" }
-                else { message = "\(result.tracks.count) 条已保存，\(result.errors.count) 条失败" }
+                let result = try await APIClient.shared.commitAdminTracks(draftID: draftID, items: items, token: token)
+                if result.errors.isEmpty { message = "\(result.tracks.count) 条轨迹已发布" }
+                else { message = "\(result.tracks.count) 条已发布，\(result.errors.count) 条失败" }
             } catch { message = error.localizedDescription }
             isSaving = false
         }
