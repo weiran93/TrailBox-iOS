@@ -104,21 +104,21 @@ Your track collection for trail running and hiking. Import, explore, and share r
 ### 中文
 ```
 本次更新：
-• 新增 ITRA 资料绑定与 App 内详情页
-• 支持展示 ITRA 表现分、排名、统计数据和比赛记录
-• 优化管理后台批量上传，可保留轨迹原名并在发布前编辑
-• 管理后台支持编辑已有路线信息
-• 修复部分接口返回格式不一致时的错误提示
+• 全面升级路线探索：支持意图入口、城市/距离/排序筛选与路线负荷提示
+• 新增路线智能与出发计划，集中查看难度、天气、设施、路况和跑友反馈
+• 优化路线详情与一键出发流程，支持收藏、GPX 导出和起终点导航
+• 优化运动记录详情、图表和 AI 复盘，完整展示训练结论与行动建议
+• 优化收藏路线预览、登录引导和页面返回体验
 ```
 
 ### 英文
 ```
 This update:
-• Adds ITRA profile linking and in-app detail pages
-• Shows ITRA performance index, rankings, stats, and race records when publicly available
-• Improves admin batch uploads with original-name preservation and pre-publish editing
-• Adds admin editing for existing routes
-• Improves error messages for unexpected API responses
+• Upgrades route discovery with intent shortcuts, filters, and transparent route-load hints
+• Adds route intelligence and departure plans for difficulty, weather, facilities, conditions, and community feedback
+• Improves route details and the one-tap start flow with favorites, GPX export, and navigation
+• Improves activity details, charts, and AI workout reviews with complete conclusions and action tips
+• Improves saved-route previews, login guidance, and navigation behavior
 ```
 
 ---

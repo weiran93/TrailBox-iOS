@@ -15,7 +15,7 @@
 
 - App 显示名：`小野box`。
 - Bundle ID：`com.trailbox.ios`。
-- 版本：`MARKETING_VERSION = 0.1.3`，`CURRENT_PROJECT_VERSION = 5`。
+- 版本：`MARKETING_VERSION = 0.1.4`，`CURRENT_PROJECT_VERSION = 6`（本轮发布目标）。
 - 最低系统：iOS 16.0。
 - 设备：仅 iPhone，`TARGETED_DEVICE_FAMILY = 1`。
 - 生命周期：纯 SwiftUI App，入口为 `TrailBox/TrailBoxApp.swift`。
