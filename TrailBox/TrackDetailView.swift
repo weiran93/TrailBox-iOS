@@ -27,7 +27,13 @@ private struct RouteMetrics {
         case climb, descent, flat
 
         var title: String { switch self { case .climb: "上坡"; case .descent: "下坡"; case .flat: "平路" } }
-        var color: Color { switch self { case .climb: .green; case .descent: .orange; case .flat: .gray } }
+        var color: Color {
+            switch self {
+            case .climb: TrailBoxColor.primary
+            case .descent: TrailBoxColor.warning
+            case .flat: TrailBoxColor.stone
+            }
+        }
     }
 
     let elevationRange: Double?
@@ -37,12 +43,26 @@ private struct RouteMetrics {
     let gradeSamples: [GradeSample]
 
     var gradeSegments: [GradeSegment] {
-        guard let first = gradeSamples.first else { return [] }
+        let maximumSampleCount = 180
+        let step = max(1, Int(ceil(Double(gradeSamples.count) / Double(maximumSampleCount))))
+        var displaySamples = gradeSamples.enumerated().compactMap { index, sample in
+            index.isMultiple(of: step) ? sample : nil
+        }
+        if let last = gradeSamples.last, displaySamples.last?.id != last.id {
+            displaySamples.append(last)
+        }
+        for extreme in [gradeSamples.max(by: { $0.grade < $1.grade }), gradeSamples.min(by: { $0.grade < $1.grade })].compactMap({ $0 }) {
+            if !displaySamples.contains(where: { $0.id == extreme.id }) {
+                displaySamples.append(extreme)
+            }
+        }
+        displaySamples.sort { $0.id < $1.id }
+        guard let first = displaySamples.first else { return [] }
         var segments: [GradeSegment] = []
         var category = first.category
         var samples = [first]
 
-        for sample in gradeSamples.dropFirst() {
+        for sample in displaySamples.dropFirst() {
             if sample.category == category {
                 samples.append(sample)
             } else {
@@ -349,15 +369,18 @@ struct TrackDetailView: View {
                             activityHero(track)
                                 .padding(.horizontal, 16)
                                 .padding(.top, 8)
-                        }
-                        if !isPublicSource { analysisCard(track) }
-                        if !isPublicSource, !routeIntelligence.activityMatches.isEmpty {
-                            activityMatchesCard
+                            activityOverviewCard(track)
                                 .padding(.horizontal, 16)
                         }
                         if !isPublicSource {
                             ZStack(alignment: .topTrailing) {
-                                TrackMap(points: track.points, pois: routeMapPOIs).frame(height: 280)
+                                TrackMap(points: track.points, pois: routeMapPOIs)
+                                    .frame(height: 280)
+                                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                            .stroke(.white.opacity(0.68), lineWidth: 0.8)
+                                    )
                                 Button { showFullscreenMap = true } label: {
                                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                                         .font(.system(size: 15, weight: .semibold))
@@ -369,6 +392,8 @@ struct TrackDetailView: View {
                                 .trailBoxGlass(in: Circle())
                                 .padding(12)
                             }
+                            .padding(.horizontal, 16)
+                            .shadow(color: TrailBoxColor.primaryDark.opacity(0.12), radius: 14, y: 7)
                         }
                         if let start = track.points.first, let end = track.points.last {
                             HStack(spacing: 12) {
@@ -376,6 +401,15 @@ struct TrackDetailView: View {
                                 endpointButton(title: "终点", point: end, trackName: track.name, color: TrailBoxColor.danger)
                             }
                             .padding(.horizontal, 16)
+                        }
+
+                        if !isPublicSource, !routeIntelligence.activityMatches.isEmpty {
+                            activityMatchesCard
+                                .padding(.horizontal, 16)
+                        }
+
+                        if !isPublicSource {
+                            analysisCard(track)
                         }
 
                         if isPublicSource {
@@ -402,16 +436,9 @@ struct TrackDetailView: View {
                                     .zIndex(3)
                             }
                         } else {
-                            SectionCard {
-                                HStack(spacing: 0) {
-                                    metric(DisplayFormat.distance(track.distanceM), "距离")
-                                    metric(DisplayFormat.elevation(track.elevationGainM), "爬升")
-                                    metric(DisplayFormat.elevation(track.elevationLossM), "下降")
-                                    metric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔")
-                                }
-                            }
-                            .padding(.horizontal, 16)
                             ElevationChart(points: track.points, title: "海拔剖面")
+                                .padding(.horizontal, 16)
+                            GradeChart(metrics: metrics)
                                 .padding(.horizontal, 16)
                             ActivityCharts(points: track.points)
                                 .padding(.horizontal, 16)
@@ -1485,15 +1512,6 @@ struct TrackDetailView: View {
         }
     }
 
-    private func metric(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 3) {
-            Text(value).font(.headline).foregroundStyle(TrailBoxColor.text).lineLimit(1).minimumScaleFactor(0.8)
-            Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText).lineLimit(1)
-        }
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity)
-    }
-
     private func publicRouteHero(_ track: Track) -> some View {
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
@@ -1593,14 +1611,83 @@ struct TrackDetailView: View {
     }
 
     private func activityHero(_ track: Track) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(DisplayFormat.date(track.startTime ?? track.createdAt) + (track.sport.map { " · \($0)" } ?? "")).font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText)
-                Text(track.name).font(.system(.title2, design: .rounded, weight: .heavy))
-                HStack { Text("基础耐力").font(.caption.weight(.bold)).foregroundStyle(TrailBoxColor.primaryDark).padding(.horizontal, 10).padding(.vertical, 6).background(TrailBoxColor.primary.opacity(0.12)).clipShape(Capsule()); Text(track.isPublic ? "公开路线" : "私有记录").font(.caption.weight(.bold)).foregroundStyle(track.isPublic ? TrailBoxColor.primaryDark : TrailBoxColor.secondaryText).padding(.horizontal, 10).padding(.vertical, 6).background((track.isPublic ? TrailBoxColor.primary : TrailBoxColor.secondaryText).opacity(0.12)).clipShape(Capsule()) }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }.frame(maxWidth: .infinity)
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [TrailBoxColor.primaryDark, TrailBoxColor.primary, TrailBoxColor.moss],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Canvas { context, size in
+                for index in 0..<5 {
+                    var contour = Path()
+                    let baseY = size.height * CGFloat(0.18 + Double(index) * 0.19)
+                    contour.move(to: CGPoint(x: -16, y: baseY))
+                    contour.addCurve(
+                        to: CGPoint(x: size.width + 16, y: baseY - 6),
+                        control1: CGPoint(x: size.width * 0.28, y: baseY - 26),
+                        control2: CGPoint(x: size.width * 0.72, y: baseY + 22)
+                    )
+                    context.stroke(contour, with: .color(.white.opacity(0.09)), lineWidth: 1)
+                }
+            }
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 15) {
+                Label(activityDateText(track.startTime ?? track.createdAt), systemImage: "calendar")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.76))
+
+                Text(track.name)
+                    .font(.system(size: 27, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.8)
+
+                HStack(spacing: 8) {
+                    activityHeroChip(track.sport ?? "运动记录", systemImage: "figure.run")
+                    activityHeroChip(track.isPublic ? "已公开" : "仅自己可见", systemImage: track.isPublic ? "globe.asia.australia.fill" : "lock.fill")
+                }
+            }
+            .padding(20)
+        }
+        .frame(minHeight: 210)
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.32), lineWidth: 0.8))
+        .shadow(color: TrailBoxColor.primaryDark.opacity(0.18), radius: 18, y: 9)
     }
+
+    private func activityHeroChip(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(.black.opacity(0.16), in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.7))
+    }
+
+    private func activityOverviewCard(_ track: Track) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 15) {
+                Label("运动概览", systemImage: "speedometer")
+                    .font(.headline)
+                    .foregroundStyle(TrailBoxColor.primaryDark)
+                HStack(spacing: 0) {
+                    routeSnapshotMetric(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
+                    routeSnapshotMetric(track.durationSec.map(DisplayFormat.duration) ?? "-", "用时", TrailBoxColor.sky)
+                    routeSnapshotMetric(DisplayFormat.elevation(track.elevationGainM), "累计爬升", TrailBoxColor.primaryDark)
+                    routeSnapshotMetric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔", TrailBoxColor.warning)
+                }
+            }
+        }
+    }
+
+    private func activityDateText(_ date: Date?) -> String {
+        guard let date else { return "记录时间待补充" }
+        return date.formatted(.dateTime.year().month().day().weekday(.abbreviated).hour().minute())
+    }
+
     private func analysisCard(_ track: Track) -> some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 10) {
@@ -2126,33 +2213,189 @@ private struct EditTrackView: View {
     }
 }
 
+private struct ElevationProfileSample: Identifiable {
+    let id: Int
+    let distanceKM: Double
+    let altitude: Double
+}
+
+private func profileDistanceLabel(_ distance: Double) -> String {
+    String(format: distance < 10 ? "%.1f km" : "%.0f km", distance)
+}
+
 private struct ElevationChart: View {
-    let points: [TrackPoint]
     let title: String
-    var body: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(title).font(.headline)
-                if points.contains(where: { $0.altitude != nil }) {
-                    Chart(Array(points.enumerated()), id: \.offset) { index, point in
-                        if let altitude = point.altitude { AreaMark(x: .value("点", index), y: .value("海拔", altitude)).foregroundStyle(TrailBoxColor.primary.opacity(0.22)).interpolationMethod(.catmullRom); LineMark(x: .value("点", index), y: .value("海拔", altitude)).foregroundStyle(TrailBoxColor.primaryDark).interpolationMethod(.catmullRom) }
-                    }.chartXAxis(.hidden).chartYAxis { AxisMarks(position: .leading) }.frame(height: 180)
-                } else { Text("暂无海拔数据").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText).frame(maxWidth: .infinity, minHeight: 100) }
+    private let samples: [ElevationProfileSample]
+    private let minimumAltitude: Double?
+    private let maximumAltitude: Double?
+    private let averageAltitude: Double?
+
+    init(points: [TrackPoint], title: String) {
+        self.title = title
+        let distances = ActivityChartSampleBuilder.cumulativeDistances(for: points)
+        let validSamples = zip(points, distances).enumerated().compactMap { index, pair -> ElevationProfileSample? in
+            guard let altitude = pair.0.altitude else { return nil }
+            return ElevationProfileSample(id: index, distanceKM: pair.1 / 1_000, altitude: altitude)
+        }
+        let altitudes = validSamples.map(\.altitude)
+        minimumAltitude = altitudes.min()
+        maximumAltitude = altitudes.max()
+        averageAltitude = altitudes.isEmpty ? nil : altitudes.reduce(0, +) / Double(altitudes.count)
+        let maximumSampleCount = 180
+        let step = max(1, Int(ceil(Double(validSamples.count) / Double(maximumSampleCount))))
+        var displaySamples = validSamples.enumerated().compactMap { index, sample in
+            index.isMultiple(of: step) ? sample : nil
+        }
+        if let last = validSamples.last, displaySamples.last?.id != last.id {
+            displaySamples.append(last)
+        }
+        for extreme in [validSamples.max(by: { $0.altitude < $1.altitude }), validSamples.min(by: { $0.altitude < $1.altitude })].compactMap({ $0 }) {
+            if !displaySamples.contains(where: { $0.id == extreme.id }) {
+                displaySamples.append(extreme)
             }
         }
+        displaySamples.sort { $0.id < $1.id }
+        samples = displaySamples
+    }
+
+    private var altitudeDomain: ClosedRange<Double> {
+        guard let minimumAltitude, let maximumAltitude else { return 0...100 }
+        let padding = max(10, (maximumAltitude - minimumAltitude) * 0.12)
+        return (minimumAltitude - padding)...(maximumAltitude + padding)
+    }
+
+    var body: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 15) {
+                Label(title, systemImage: "mountain.2.fill")
+                    .font(.headline)
+                    .foregroundStyle(TrailBoxColor.primaryDark)
+
+                if samples.isEmpty {
+                    Text("暂无海拔数据")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 120)
+                } else {
+                    HStack(spacing: 0) {
+                        profileMetric(minimumAltitude.map(DisplayFormat.elevation) ?? "-", "最低")
+                        profileMetric(maximumAltitude.map(DisplayFormat.elevation) ?? "-", "最高")
+                        profileMetric(averageAltitude.map(DisplayFormat.elevation) ?? "-", "平均")
+                    }
+
+                    Chart(samples) { sample in
+                        AreaMark(
+                            x: .value("距离", sample.distanceKM),
+                            yStart: .value("基准", altitudeDomain.lowerBound),
+                            yEnd: .value("海拔", sample.altitude)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [TrailBoxColor.primary.opacity(0.32), TrailBoxColor.primary.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+
+                        LineMark(
+                            x: .value("距离", sample.distanceKM),
+                            y: .value("海拔", sample.altitude)
+                        )
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                        .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        .interpolationMethod(.catmullRom)
+                    }
+                    .chartYScale(domain: altitudeDomain)
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
+                                .foregroundStyle(TrailBoxColor.border)
+                            AxisValueLabel {
+                                if let distance = value.as(Double.self) {
+                                    Text(profileDistanceLabel(distance))
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
+                                .foregroundStyle(TrailBoxColor.border)
+                            AxisValueLabel {
+                                if let altitude = value.as(Double.self) {
+                                    Text("\(altitude, specifier: "%.0f") m")
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                    .chartPlotStyle { plotArea in
+                        plotArea
+                            .background(TrailBoxColor.surfaceMuted.opacity(0.42))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .frame(height: 210)
+
+                    Label("横轴按沿途距离展示", systemImage: "arrow.left.and.right")
+                        .font(.caption2)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+            }
+        }
+    }
+
+    private func profileMetric(_ value: String, _ title: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(TrailBoxColor.text)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(TrailBoxColor.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
 private struct GradeChart: View {
     let metrics: RouteMetrics
 
+    private var maximumUphill: Double? {
+        metrics.gradeSamples.map(\.grade).filter { $0 > 0 }.max()
+    }
+
+    private var maximumDownhill: Double? {
+        metrics.gradeSamples.map(\.grade).filter { $0 < 0 }.min()
+    }
+
+    private var gradeDomain: ClosedRange<Double> {
+        let maximumMagnitude = metrics.gradeSamples.map { abs($0.grade) }.max() ?? 10
+        let bound = min(35, max(10, ceil(maximumMagnitude / 5) * 5))
+        return (-bound)...bound
+    }
+
     var body: some View {
         SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("坡度剖面").font(.headline)
+            VStack(alignment: .leading, spacing: 15) {
+                Label("坡度剖面", systemImage: "chart.xyaxis.line")
+                    .font(.headline)
+                    .foregroundStyle(TrailBoxColor.primaryDark)
                 if metrics.gradeSamples.isEmpty {
-                    Text("暂无可用于计算坡度的海拔数据").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText).frame(maxWidth: .infinity, minHeight: 100)
+                    Text("暂无可用于计算坡度的海拔数据")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 120)
                 } else {
+                    HStack(spacing: 0) {
+                        gradeMetric(metrics.averageGrade.map(formatGrade) ?? "-", "平均坡度", TrailBoxColor.stone)
+                        gradeMetric(maximumUphill.map(formatGrade) ?? "-", "最大上坡", TrailBoxColor.primary)
+                        gradeMetric(maximumDownhill.map(formatGrade) ?? "-", "最大下坡", TrailBoxColor.warning)
+                    }
+
                     HStack(spacing: 14) {
                         ForEach(RouteMetrics.GradeCategory.allCases, id: \.self) { category in
                             HStack(spacing: 5) {
@@ -2165,23 +2408,79 @@ private struct GradeChart: View {
                         RuleMark(y: .value("零坡度", 0)).foregroundStyle(TrailBoxColor.border)
                         ForEach(metrics.gradeSegments) { segment in
                             ForEach(segment.samples) { sample in
+                                AreaMark(
+                                    x: .value("距离", sample.distanceM / 1_000),
+                                    yStart: .value("基准", 0),
+                                    yEnd: .value("坡度", sample.grade),
+                                    series: .value("区段填充", segment.id)
+                                )
+                                .foregroundStyle(segment.category.color.opacity(0.13))
+                                .interpolationMethod(.catmullRom)
+
                                 LineMark(
                                     x: .value("距离", sample.distanceM / 1_000),
                                     y: .value("坡度", sample.grade),
                                     series: .value("区段", segment.id)
                                 )
                                 .foregroundStyle(segment.category.color)
+                                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                                 .interpolationMethod(.catmullRom)
                             }
                         }
                     }
-                    .chartXAxisLabel("距离 (km)")
-                    .chartYAxisLabel("坡度 (%)")
+                    .chartYScale(domain: gradeDomain)
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
+                                .foregroundStyle(TrailBoxColor.border)
+                            AxisValueLabel {
+                                if let distance = value.as(Double.self) {
+                                    Text(profileDistanceLabel(distance))
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
+                                .foregroundStyle(TrailBoxColor.border)
+                            AxisValueLabel {
+                                if let grade = value.as(Double.self) {
+                                    Text("\(grade, specifier: "%.0f")%")
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
                     .chartLegend(.hidden)
-                    .frame(height: 180)
+                    .chartPlotStyle { plotArea in
+                        plotArea
+                            .background(TrailBoxColor.surfaceMuted.opacity(0.42))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .frame(height: 210)
                 }
             }
         }
+    }
+
+    private func gradeMetric(_ value: String, _ title: String, _ color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(TrailBoxColor.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func formatGrade(_ grade: Double) -> String {
+        String(format: "%+.1f%%", grade)
     }
 }
 
@@ -2199,32 +2498,101 @@ private struct ActivityCharts: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            chart(title: "心率变化", samples: heartRateSamples, color: .red, unit: "bpm")
-            chart(title: "配速变化", samples: paceSamples, color: .blue, unit: "min/km")
+            chart(title: "心率变化", systemImage: "heart.fill", samples: heartRateSamples, color: TrailBoxColor.danger, unit: "bpm")
+            chart(title: "配速变化", systemImage: "speedometer", samples: paceSamples, color: TrailBoxColor.sky, unit: "min/km")
         }
     }
 
-    private func chart(title: String, samples: [ActivityChartSample], color: Color, unit: String) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(title).font(.headline)
+    private func chart(title: String, systemImage: String, samples: [ActivityChartSample], color: Color, unit: String) -> some View {
+        let minimum = samples.map(\.value).min() ?? 0
+        let maximum = samples.map(\.value).max() ?? 1
+        let padding = max(0.5, (maximum - minimum) * 0.14)
+        let lowerBound = max(0, minimum - padding)
+        let upperBound = maximum + padding
+        let average = samples.isEmpty ? nil : samples.reduce(0) { $0 + $1.value } / Double(samples.count)
+
+        return SectionCard {
+            VStack(alignment: .leading, spacing: 15) {
+                HStack {
+                    Label(title, systemImage: systemImage)
+                        .font(.headline)
+                        .foregroundStyle(color)
+                    Spacer()
+                    if let average {
+                        Text("均值 \(formattedActivityValue(average, unit: unit)) \(unit)")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                }
                 if samples.isEmpty {
-                    Text("暂无可用数据").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText).frame(maxWidth: .infinity, minHeight: 100)
+                    Text("暂无可用数据")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 120)
                 } else {
                     Chart(samples) { sample in
+                        AreaMark(
+                            x: .value("距离", sample.distanceKM),
+                            yStart: .value("基准", lowerBound),
+                            yEnd: .value(unit, sample.value)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [color.opacity(0.24), color.opacity(0.025)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+
                         LineMark(
                             x: .value("距离", sample.distanceKM),
                             y: .value(unit, sample.value)
                         )
                         .foregroundStyle(color)
+                        .lineStyle(StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round))
                         .interpolationMethod(.monotone)
                     }
-                    .chartXAxisLabel("距离 (km)")
-                    .chartYAxisLabel(unit)
-                    .frame(height: 160)
+                    .chartYScale(domain: lowerBound...upperBound)
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
+                                .foregroundStyle(TrailBoxColor.border)
+                            AxisValueLabel {
+                                if let distance = value.as(Double.self) {
+                                    Text(profileDistanceLabel(distance))
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
+                                .foregroundStyle(TrailBoxColor.border)
+                            AxisValueLabel {
+                                if let metric = value.as(Double.self) {
+                                    Text(metric, format: .number.precision(.fractionLength(unit == "bpm" ? 0 : 1)))
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                    .chartPlotStyle { plotArea in
+                        plotArea
+                            .background(TrailBoxColor.surfaceMuted.opacity(0.42))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .frame(height: 190)
                 }
             }
         }
+    }
+
+    private func formattedActivityValue(_ value: Double, unit: String) -> String {
+        String(format: unit == "bpm" ? "%.0f" : "%.1f", value)
     }
 }
 
@@ -2287,7 +2655,7 @@ private enum ActivityChartSampleBuilder {
         }
     }
 
-    private static func cumulativeDistances(for points: [TrackPoint]) -> [Double] {
+    static func cumulativeDistances(for points: [TrackPoint]) -> [Double] {
         let recorded = points.compactMap(\.distance)
         if recorded.count == points.count,
            let first = recorded.first,

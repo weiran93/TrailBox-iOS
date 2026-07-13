@@ -117,8 +117,8 @@ struct MyTracksView: View {
                         LazyVStack(spacing: 12) {
                             summary
                             ForEach(viewModel.tracks) { track in
-                                NavigationLink {
-                                    TrackDetailView(trackID: track.id, isPublicSource: false, onDeleted: refreshTracks, onSaved: refreshTracks)
+                                Button {
+                                    navigationPath.append(.track(track.id))
                                 } label: {
                                     TrackCard(track: track, isActivity: true)
                                 }
