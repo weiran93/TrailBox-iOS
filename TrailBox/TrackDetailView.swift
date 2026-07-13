@@ -181,6 +181,148 @@ private struct NavigationProviderSheet: View {
     }
 }
 
+private struct RouteStartActionSheet: View {
+    let routeName: String
+    let decisionTitle: String
+    let decisionLevel: String
+    let decisionColor: Color
+    let planTitle: String
+    let isPlanLoading: Bool
+    let isSaved: Bool
+    let isSaving: Bool
+    let navigateToStart: () -> Void
+    let openPlan: () -> Void
+    let exportGPX: () -> Void
+    let toggleSaved: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 19, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("准备出发")
+                                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                                .foregroundStyle(TrailBoxColor.text)
+                            Text(routeName)
+                                .font(.subheadline)
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    HStack(spacing: 7) {
+                        Circle().fill(decisionColor).frame(width: 7, height: 7)
+                        Text("\(decisionLevel) · \(decisionTitle)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(decisionColor)
+                            .lineLimit(2)
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(decisionColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+
+                VStack(spacing: 10) {
+                    actionButton(
+                        title: "导航到起点",
+                        subtitle: "选择苹果地图、高德等导航应用",
+                        systemImage: "location.fill",
+                        color: TrailBoxColor.primary,
+                        action: navigateToStart
+                    )
+                    actionButton(
+                        title: planTitle,
+                        subtitle: "结合天气、日落、补给生成清单",
+                        systemImage: "calendar.badge.checkmark",
+                        color: TrailBoxColor.sky,
+                        isLoading: isPlanLoading,
+                        action: openPlan
+                    )
+                    actionButton(
+                        title: "导出 GPX",
+                        subtitle: "发送到手表、导航设备或其他应用",
+                        systemImage: "square.and.arrow.down",
+                        color: TrailBoxColor.moss,
+                        action: exportGPX
+                    )
+                    actionButton(
+                        title: isSaved ? "取消收藏路线" : "收藏路线",
+                        subtitle: isSaved ? "从我的收藏路线中移除" : "稍后在我的收藏路线中查看",
+                        systemImage: isSaved ? "bookmark.slash.fill" : "bookmark.fill",
+                        color: TrailBoxColor.warning,
+                        isLoading: isSaving,
+                        action: toggleSaved
+                    )
+                }
+
+                Text("导航和 GPX 导出无需登录；出发计划与收藏会保存到你的账号。")
+                    .font(.caption2)
+                    .foregroundStyle(TrailBoxColor.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+        }
+        .background(TrailPageBackground())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func actionButton(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        color: Color,
+        isLoading: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 13) {
+                Group {
+                    if isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(color)
+                    }
+                }
+                .frame(width: 40, height: 40)
+                .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(TrailBoxColor.text)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(TrailBoxColor.secondaryText)
+            }
+            .padding(.horizontal, 13)
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
+            .background(TrailBoxColor.surface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+    }
+}
+
 private extension CharacterSet {
     static let urlQueryValueAllowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=?+"))
 }
@@ -277,6 +419,14 @@ private struct RouteDecisionSummary {
     }
 }
 
+private struct RouteTrustSummary {
+    let availableCount: Int
+    let totalCount: Int
+    let headline: String
+    let detail: String
+    let color: Color
+}
+
 private struct DetailSectionTitle: View {
     let title: String
     let systemImage: String
@@ -322,6 +472,7 @@ struct TrackDetailView: View {
     @State private var showSharePreview = false
     @State private var showReport = false
     @State private var showRouteFeedback = false
+    @State private var showStartRouteSheet = false
     @State private var navigationDestination: NavigationDestination?
     @State private var departurePlanDraft: DeparturePlan?
     @State private var selectedRouteSection: RouteDetailSection = .overview
@@ -417,7 +568,7 @@ struct TrackDetailView: View {
                             .padding(.horizontal, 16)
                             .shadow(color: TrailBoxColor.primaryDark.opacity(0.12), radius: 14, y: 7)
                         }
-                        if let start = track.points.first, let end = track.points.last {
+                        if !isPublicSource, let start = track.points.first, let end = track.points.last {
                             HStack(spacing: 12) {
                                 endpointButton(title: "起点", point: start, trackName: track.name, color: TrailBoxColor.primaryDark)
                                 endpointButton(title: "终点", point: end, trackName: track.name, color: TrailBoxColor.danger)
@@ -435,10 +586,7 @@ struct TrackDetailView: View {
                         }
 
                         if isPublicSource {
-                            publicRouteSnapshot(track, metrics: metrics)
-                                .padding(.horizontal, 16)
-
-                            routeDecisionCard(track)
+                            routeGuideCard(track, metrics: metrics)
                                 .padding(.horizontal, 16)
                                 .id(RouteDetailSection.overview)
 
@@ -560,6 +708,9 @@ struct TrackDetailView: View {
             RouteFeedbackView(trackID: track.id) {
                 await routeIntelligence.load(trackID: track.id, token: session.token)
             }
+        }
+        .sheet(isPresented: $showStartRouteSheet) {
+            routeStartActionSheet(track)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { detailActions(track) }
         .task(id: track.id) {
@@ -936,12 +1087,13 @@ struct TrackDetailView: View {
         .padding(.horizontal, 16)
     }
 
-    private func routeDecisionCard(_ track: Track) -> some View {
+    private func routeGuideCard(_ track: Track, metrics: RouteMetrics) -> some View {
         let decision = routeDecision(for: track)
+        let trust = routeTrustSummary(for: track)
         return SectionCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
-                    DetailSectionTitle(title: "出发决策", systemImage: "figure.hiking")
+                    DetailSectionTitle(title: "路线说明书", systemImage: "map.fill")
                     Spacer(minLength: 8)
                     if decision.isUpdating {
                         ProgressView()
@@ -977,10 +1129,19 @@ struct TrackDetailView: View {
                     }
                 }
 
+                HStack(spacing: 0) {
+                    routeSnapshotMetric(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
+                    routeSnapshotMetric(DisplayFormat.elevation(track.elevationGainM), "累计爬升", TrailBoxColor.primaryDark)
+                    routeSnapshotMetric(metrics.maximumGrade.map(formatGrade) ?? "-", "最大坡度", TrailBoxColor.warning)
+                    routeSnapshotMetric(routeDurationText(for: track), "预计用时", TrailBoxColor.sky)
+                }
+                .padding(.vertical, 12)
+                .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
                 Divider()
 
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(decision.points) { point in
+                    ForEach(Array(decision.points.dropFirst().prefix(3))) { point in
                         HStack(alignment: .top, spacing: 11) {
                             Image(systemName: point.systemImage)
                                 .font(.system(size: 13, weight: .bold))
@@ -995,35 +1156,40 @@ struct TrackDetailView: View {
                     }
                 }
 
-                Label(
-                    routeIntelligence.lastCheckedAt.map {
-                        "检查于 \($0.formatted(.dateTime.hour().minute())) · \(decision.sourceText)"
-                    } ?? "实时汇总 · \(decision.sourceText)",
-                    systemImage: "checkmark.seal"
-                )
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(trust.color)
+                        .frame(width: 36, height: 36)
+                        .background(trust.color.opacity(0.1), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 7) {
+                            Text("路线资料")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(TrailBoxColor.text)
+                            Text("\(trust.availableCount)/\(trust.totalCount)")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(trust.color)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(trust.color.opacity(0.1), in: Capsule())
+                        }
+                        Text(trust.headline)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.text)
+                        Text(trust.detail)
+                            .font(.caption2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(trust.color.opacity(0.055), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                Label(routeGuideSourceText(for: track, decision: decision), systemImage: "clock.arrow.circlepath")
                     .font(.caption2)
                     .foregroundStyle(TrailBoxColor.secondaryText)
-
-                Button {
-                    openDeparturePlan(for: track)
-                } label: {
-                    HStack {
-                        Image(systemName: departurePlans.plan(for: track.id) == nil ? "calendar.badge.plus" : "calendar.badge.checkmark")
-                        Text(departurePlanButtonTitle(for: track))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 15)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(departurePlans.plan(for: track.id) == nil && isDeparturePlanLoading)
-                .opacity(departurePlans.plan(for: track.id) == nil && isDeparturePlanLoading ? 0.58 : 1)
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: decision.animationKey)
@@ -1034,6 +1200,84 @@ struct TrackDetailView: View {
         routeIntelligence.isLoadingAnalysis
             || routeIntelligence.isLoadingWeather
             || routeIntelligence.isLoadingPOIs
+    }
+
+    private func routeDurationText(for track: Track) -> String {
+        if let minimum = routeIntelligence.personalFit?.estimatedDurationMin ?? routeIntelligence.analysis?.estimatedDurationMin,
+           let maximum = routeIntelligence.personalFit?.estimatedDurationMax ?? routeIntelligence.analysis?.estimatedDurationMax {
+            return compactDurationRange(minimum: minimum, maximum: maximum)
+        }
+
+        let distanceHours = max(0, track.distanceM / 1_000) / 5.5
+        let climbHours = max(0, track.elevationGainM) / 650
+        let estimate = max(0.5, distanceHours + climbHours)
+        let minimum = Int((estimate * 0.82 * 60 / 15).rounded() * 15)
+        let maximum = max(minimum + 30, Int((estimate * 1.2 * 60 / 15).rounded() * 15))
+        return compactDurationRange(minimum: minimum, maximum: maximum)
+    }
+
+    private func compactDurationRange(minimum: Int, maximum: Int) -> String {
+        if maximum < 60 { return "\(minimum)–\(maximum)分" }
+        let lowerHours = max(1, Int(floor(Double(minimum) / 60)))
+        let upperHours = max(lowerHours + 1, Int(ceil(Double(maximum) / 60)))
+        return "\(lowerHours)–\(upperHours)h"
+    }
+
+    private func routeTrustSummary(for track: Track) -> RouteTrustSummary {
+        let hasTrack = track.points.count > 1
+        let hasAnalysis = routeIntelligence.analysis != nil
+        let hasWeather = routeIntelligence.weather != nil
+        let hasFacilities = !routeIntelligence.pois.isEmpty || !routeIntelligence.discoveredPOIs.isEmpty
+        let hasCommunity = !routeIntelligence.conditions.isEmpty
+            || (routeIntelligence.reviews?.count ?? 0) > 0
+            || (routeIntelligence.completions?.count ?? 0) > 0
+        let availableCount = [hasTrack, hasAnalysis, hasWeather, hasFacilities, hasCommunity].filter { $0 }.count
+        let verifiedPOICount = routeIntelligence.pois.filter { $0.status == "verified" }.count
+        let mapPOICount = routeIntelligence.pois.filter { $0.status != "verified" }.count + routeIntelligence.discoveredPOIs.count
+        let completionCount = routeIntelligence.completions?.count ?? 0
+
+        let headline: String
+        let color: Color
+        if availableCount >= 5 {
+            headline = "基础与动态资料较完整"
+            color = TrailBoxColor.primaryDark
+        } else if availableCount >= 3 {
+            headline = "核心路线资料已就绪"
+            color = TrailBoxColor.sky
+        } else {
+            headline = "基础轨迹可用，动态资料待补充"
+            color = TrailBoxColor.warning
+        }
+
+        var evidence: [String] = []
+        if completionCount > 0 { evidence.append("跑友完成 \(completionCount) 次") }
+        if verifiedPOICount > 0 { evidence.append("\(verifiedPOICount) 处设施已确认") }
+        else if mapPOICount > 0 { evidence.append("\(mapPOICount) 处地图设施待核实") }
+        if evidence.isEmpty { evidence.append("跑友验证信息仍待补充") }
+        evidence.append("不等同于路线安全认证")
+
+        return RouteTrustSummary(
+            availableCount: availableCount,
+            totalCount: 5,
+            headline: headline,
+            detail: evidence.joined(separator: " · "),
+            color: color
+        )
+    }
+
+    private func routeGuideSourceText(for track: Track, decision: RouteDecisionSummary) -> String {
+        var items: [String] = []
+        if let contributor = track.contributorName, track.showContributor {
+            items.append("贡献者 \(contributor)")
+        }
+        if let createdAt = track.createdAt {
+            items.append(createdAt.formatted(.dateTime.year().month().day()))
+        }
+        if let checkedAt = routeIntelligence.lastCheckedAt {
+            items.append("情报检查 \(checkedAt.formatted(.dateTime.hour().minute()))")
+        }
+        items.append(decision.sourceText)
+        return items.joined(separator: " · ")
     }
 
     private func departurePlanButtonTitle(for track: Track) -> String {
@@ -1513,27 +1757,90 @@ struct TrackDetailView: View {
     private func detailActions(_ track: Track) -> some View {
         FloatingActionBar {
             HStack(spacing: 12) {
-                Button { download(track) } label: {
-                    Label("下载 GPX", systemImage: "arrow.down.circle")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                }
-                .foregroundStyle(TrailBoxColor.primaryDark)
-                .buttonStyle(.plain)
-                .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                if isPublicSource {
+                    Button { showStartRouteSheet = true } label: {
+                        Label("一键出发", systemImage: "figure.run")
+                            .font(.subheadline.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .foregroundStyle(.white)
+                    .buttonStyle(.plain)
+                    .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-                Button { showSharePreview = true } label: {
-                    Label(isPublicSource ? "分享路线" : "分享记录", systemImage: "square.and.arrow.up")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                    Button { showSharePreview = true } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 52, height: 52)
+                    }
+                    .foregroundStyle(TrailBoxColor.primaryDark)
+                    .buttonStyle(.plain)
+                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .accessibilityLabel("分享路线")
+                } else {
+                    Button { download(track) } label: {
+                        Label("导出 GPX", systemImage: "square.and.arrow.down")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .foregroundStyle(TrailBoxColor.primaryDark)
+                    .buttonStyle(.plain)
+                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    Button { showSharePreview = true } label: {
+                        Label("分享记录", systemImage: "square.and.arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .foregroundStyle(.white)
+                    .buttonStyle(.plain)
+                    .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                .foregroundStyle(.white)
-                .buttonStyle(.plain)
-                .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
+    }
+
+    private func routeStartActionSheet(_ track: Track) -> some View {
+        let decision = routeDecision(for: track)
+        let planIsLoading = departurePlans.plan(for: track.id) == nil && isDeparturePlanLoading
+        return RouteStartActionSheet(
+            routeName: track.name,
+            decisionTitle: decision.title,
+            decisionLevel: decision.level,
+            decisionColor: decision.color,
+            planTitle: departurePlanButtonTitle(for: track),
+            isPlanLoading: planIsLoading,
+            isSaved: savedRoutes.isSaved(track.id),
+            isSaving: savedRoutes.savingTrackIDs.contains(track.id),
+            navigateToStart: {
+                dismissStartRouteSheet {
+                    guard let start = track.points.first else { return }
+                    navigationDestination = NavigationDestination(point: start, name: "\(track.name) 起点")
+                }
+            },
+            openPlan: {
+                dismissStartRouteSheet { openDeparturePlan(for: track) }
+            },
+            exportGPX: {
+                dismissStartRouteSheet { download(track) }
+            },
+            toggleSaved: {
+                dismissStartRouteSheet {
+                    guard let token = session.token else {
+                        session.requireAuthentication()
+                        return
+                    }
+                    Task { await savedRoutes.toggle(trackID: track.id, token: token) }
+                }
+            }
+        )
+    }
+
+    private func dismissStartRouteSheet(then action: @escaping () -> Void) {
+        showStartRouteSheet = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: action)
     }
 
     private func publicRouteHero(_ track: Track) -> some View {
@@ -1592,29 +1899,6 @@ struct TrackDetailView: View {
             .padding(12)
         }
         .shadow(color: TrailBoxColor.primaryDark.opacity(0.18), radius: 18, y: 9)
-    }
-
-    private func publicRouteSnapshot(_ track: Track, metrics: RouteMetrics) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 15) {
-                HStack {
-                    DetailSectionTitle(title: "路线概览", systemImage: "mountain.2.fill")
-                    Spacer()
-                    Text(metrics.difficulty ?? "待评估")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(difficultyColor(metrics.difficulty))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(difficultyColor(metrics.difficulty).opacity(0.1), in: Capsule())
-                }
-                HStack(spacing: 0) {
-                    routeSnapshotMetric(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
-                    routeSnapshotMetric(DisplayFormat.elevation(track.elevationGainM), "累计爬升", TrailBoxColor.primaryDark)
-                    routeSnapshotMetric(metrics.maximumGrade.map(formatGrade) ?? "-", "最大坡度", TrailBoxColor.warning)
-                    routeSnapshotMetric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔", TrailBoxColor.sky)
-                }
-            }
-        }
     }
 
     private func routeSnapshotMetric(_ value: String, _ label: String, _ color: Color) -> some View {
@@ -1864,16 +2148,21 @@ struct TrackDetailView: View {
     }
 
     private func download(_ track: Track) {
-        guard session.isAuthenticated, let token = session.token else {
+        if !isPublicSource, !session.isAuthenticated {
             session.requireAuthentication()
             return
         }
+        let token = session.token
         Task {
             do {
                 shareFile = ActivityFile(url: try await APIClient.shared.downloadGPX(trackID: track.id, token: token))
             } catch APIError.unauthorized {
-                session.handle(APIError.unauthorized)
-                session.requireAuthentication()
+                if isPublicSource {
+                    actionError = "这条路线暂时无法公开导出 GPX。"
+                } else {
+                    session.handle(APIError.unauthorized)
+                    session.requireAuthentication()
+                }
             } catch {
                 actionError = ErrorMessage.display(error)
             }

@@ -1,5 +1,92 @@
 import SwiftUI
 
+private enum RouteEstimate {
+    static func hours(for track: Track) -> Double {
+        let distanceHours = max(0, track.distanceM / 1_000) / 5.5
+        let climbHours = max(0, track.elevationGainM) / 650
+        return max(0.5, distanceHours + climbHours)
+    }
+
+    static func durationText(for track: Track) -> String {
+        let estimate = hours(for: track)
+        let lower = roundedHalfHour(max(0.5, estimate * 0.82))
+        let upper = roundedHalfHour(max(lower + 0.5, estimate * 1.2))
+        return "\(formatHours(lower))–\(formatHours(upper))小时"
+    }
+
+    private static func roundedHalfHour(_ value: Double) -> Double {
+        (value * 2).rounded() / 2
+    }
+
+    private static func formatHours(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+    }
+}
+
+fileprivate enum RouteIntent: String, CaseIterable, Identifiable {
+    case quick
+    case halfDay
+    case fullDay
+    case beginner
+    case climbing
+    case longDistance
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .quick: return "2 小时左右"
+        case .halfDay: return "半日路线"
+        case .fullDay: return "全天挑战"
+        case .beginner: return "新手友好"
+        case .climbing: return "爬升训练"
+        case .longDistance: return "长距离"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .quick: return "短时出发"
+        case .halfDay: return "约 2–5 小时"
+        case .fullDay: return "预留一整天"
+        case .beginner: return "距离与爬升适中"
+        case .climbing: return "高爬升密度"
+        case .longDistance: return "25 km 以上"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .quick: return "clock.fill"
+        case .halfDay: return "sun.horizon.fill"
+        case .fullDay: return "sun.max.fill"
+        case .beginner: return "leaf.fill"
+        case .climbing: return "mountain.2.fill"
+        case .longDistance: return "point.topleft.down.to.point.bottomright.curvepath"
+        }
+    }
+
+    func matches(_ track: Track) -> Bool {
+        let hours = RouteEstimate.hours(for: track)
+        let distanceKM = track.distanceM / 1_000
+        let climbDensity = distanceKM > 0 ? track.elevationGainM / distanceKM : 0
+        switch self {
+        case .quick:
+            return hours <= 2.5
+        case .halfDay:
+            return hours > 2.5 && hours <= 5.5
+        case .fullDay:
+            return hours > 5.5
+        case .beginner:
+            return distanceKM <= 15 && track.elevationGainM <= 700 && climbDensity < 60
+        case .climbing:
+            return track.elevationGainM >= 1_000 || climbDensity >= 80
+        case .longDistance:
+            return distanceKM >= 25
+        }
+    }
+}
+
 @MainActor
 final class ExploreViewModel: ObservableObject {
     enum State { case loading, content, empty, failed(String) }
@@ -13,16 +100,21 @@ final class ExploreViewModel: ObservableObject {
     @Published var keyword = ""
     @Published var distanceRange = "all"
     @Published var sortBy = "newest"
+    @Published fileprivate var selectedIntent: RouteIntent?
 
     var cities: [String] { Array(Set(tracks.compactMap(\.city))).sorted() }
+    fileprivate var availableIntents: [RouteIntent] {
+        RouteIntent.allCases.filter { intent in tracks.contains(where: intent.matches) }
+    }
     var sheetFilterCount: Int {
         [selectedCity != nil, distanceRange != "all", sortBy != "newest"].filter { $0 }.count
     }
     var hasActiveFilters: Bool {
-        selectedTag != nil || selectedCity != nil || distanceRange != "all" || sortBy != "newest" || !trimmedKeyword.isEmpty
+        selectedIntent != nil || selectedTag != nil || selectedCity != nil || distanceRange != "all" || sortBy != "newest" || !trimmedKeyword.isEmpty
     }
     var activeFilterSummary: String {
         var items: [String] = []
+        if let selectedIntent { items.append(selectedIntent.title) }
         if let selectedTag { items.append(selectedTag) }
         if let selectedCity { items.append(selectedCity) }
         if distanceRange != "all" { items.append(distanceRangeTitle) }
@@ -32,7 +124,8 @@ final class ExploreViewModel: ObservableObject {
     }
     var filteredTracks: [Track] {
         let result = tracks.filter { track in
-            (selectedTag == nil || track.tagList.contains(selectedTag ?? "")) && (selectedCity == nil || track.city == selectedCity)
+            (selectedIntent == nil || selectedIntent?.matches(track) == true)
+            && (selectedTag == nil || track.tagList.contains(selectedTag ?? "")) && (selectedCity == nil || track.city == selectedCity)
             && (trimmedKeyword.isEmpty || [track.name, track.city ?? "", track.tags ?? "", track.description ?? ""].joined(separator: " ").localizedCaseInsensitiveContains(trimmedKeyword))
             && (distanceRange == "all" || (distanceRange == "short" && track.distanceM <= 10_000) || (distanceRange == "medium" && track.distanceM > 10_000 && track.distanceM <= 30_000) || (distanceRange == "long" && track.distanceM > 30_000 && track.distanceM <= 50_000) || (distanceRange == "ultra" && track.distanceM >= 50_000))
         }
@@ -40,6 +133,7 @@ final class ExploreViewModel: ObservableObject {
     }
 
     func resetFilters() {
+        selectedIntent = nil
         selectedTag = nil
         selectedCity = nil
         keyword = ""
@@ -206,6 +300,30 @@ struct ExploreView: View {
 
     private var content: some View {
         List {
+            if !viewModel.availableIntents.isEmpty {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("这次想怎么跑？")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(TrailBoxColor.text)
+                            .padding(.horizontal, 16)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(viewModel.availableIntents) { intent in
+                                    intentButton(intent)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 2)
+                        }
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             if !viewModel.tags.isEmpty {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -333,6 +451,48 @@ struct ExploreView: View {
             .clipShape(Capsule())
             .overlay(Capsule().stroke(viewModel.selectedTag == tag ? Color.clear : TrailBoxColor.border, lineWidth: 0.75))
             .shadow(color: viewModel.selectedTag == tag ? TrailBoxColor.primaryDark.opacity(0.16) : .clear, radius: 8, y: 3)
+    }
+
+    private func intentButton(_ intent: RouteIntent) -> some View {
+        let isSelected = viewModel.selectedIntent == intent
+        let count = viewModel.tracks.filter(intent.matches).count
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                viewModel.selectedIntent = isSelected ? nil : intent
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Image(systemName: intent.systemImage)
+                        .font(.system(size: 15, weight: .bold))
+                    Spacer(minLength: 12)
+                    Text("\(count)")
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(isSelected ? Color.white.opacity(0.18) : TrailBoxColor.primary.opacity(0.09), in: Capsule())
+                }
+                Text(intent.title)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+                Text(intent.subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.76) : TrailBoxColor.secondaryText)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? Color.white : TrailBoxColor.primaryDark)
+            .padding(12)
+            .frame(width: 128, height: 82, alignment: .leading)
+            .background(isSelected ? TrailBoxColor.primaryDark : TrailBoxColor.surface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .stroke(isSelected ? Color.clear : TrailBoxColor.border, lineWidth: 0.75)
+            )
+            .shadow(color: TrailBoxColor.primaryDark.opacity(isSelected ? 0.15 : 0.06), radius: 10, y: 5)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(intent.title)，\(count) 条路线")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -471,7 +631,7 @@ struct TrackCard: View {
                 HStack(spacing: 0) {
                     exploreStat(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
                     exploreStat(compactElevation(track.elevationGainM), "累计爬升", TrailBoxColor.primaryDark)
-                    exploreStat(climbDensityText, "爬升密度", routeEffortColor)
+                    exploreStat(RouteEstimate.durationText(for: track), "参考用时", routeEffortColor)
                 }
                 .padding(.vertical, 12)
                 .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
