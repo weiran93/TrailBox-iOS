@@ -29,6 +29,7 @@ final class SavedRoutesStore: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var feedback: SavedRouteFeedback?
     private var optimisticStates: [String: Bool] = [:]
+    private var previewCache: [String: Track] = [:]
 
     var tracks: [Track] { box?.tracks ?? [] }
     var savedTrackIDs: Set<String> { Set(tracks.map(\.id)) }
@@ -54,7 +55,9 @@ final class SavedRoutesStore: ObservableObject {
             return
         }
         do {
-            box = try await APIClient.shared.request("/boxes/want-to-run", token: token)
+            let loadedBox: TrackBox = try await APIClient.shared.request("/boxes/want-to-run", token: token)
+            box = boxUsingCachedPreviews(loadedBox)
+            box = await hydratedPreviews(in: loadedBox, token: token)
             errorMessage = nil
         } catch {
             errorMessage = "收藏路线加载失败：\(ErrorMessage.display(error))"
@@ -97,15 +100,69 @@ final class SavedRoutesStore: ObservableObject {
 
         do {
             let method = shouldSave ? "PUT" : "DELETE"
-            box = try await APIClient.shared.request(
+            let loadedBox: TrackBox = try await APIClient.shared.request(
                 "/boxes/want-to-run/tracks/\(trackID)",
                 method: method,
                 token: token
             )
+            box = boxUsingCachedPreviews(loadedBox)
+            box = await hydratedPreviews(in: loadedBox, token: token)
             errorMessage = nil
             feedback = SavedRouteFeedback(trackID: trackID, kind: successKind)
         } catch {
             errorMessage = "收藏操作失败：\(ErrorMessage.display(error))"
         }
+    }
+
+    private func boxUsingCachedPreviews(_ loadedBox: TrackBox) -> TrackBox {
+        replacingTracks(in: loadedBox) { track in
+            track.points.count > 1 ? track : (previewCache[track.id] ?? track)
+        }
+    }
+
+    private func hydratedPreviews(in loadedBox: TrackBox, token: String) async -> TrackBox {
+        var resolvedTracks = Dictionary(uniqueKeysWithValues: loadedBox.tracks.map { track in
+            (track.id, track.points.count > 1 ? track : (previewCache[track.id] ?? track))
+        })
+        let missingTracks = loadedBox.tracks.filter { (resolvedTracks[$0.id]?.points.count ?? 0) < 2 }
+
+        await withTaskGroup(of: Track?.self) { group in
+            var iterator = missingTracks.makeIterator()
+            for _ in 0..<min(6, missingTracks.count) {
+                guard let track = iterator.next() else { break }
+                group.addTask {
+                    try? await APIClient.shared.request("/tracks/\(track.id)/public", token: token)
+                }
+            }
+            while let track = await group.next() {
+                if let track, track.points.count > 1 {
+                    resolvedTracks[track.id] = track
+                    previewCache[track.id] = track
+                }
+                if let nextTrack = iterator.next() {
+                    group.addTask {
+                        try? await APIClient.shared.request("/tracks/\(nextTrack.id)/public", token: token)
+                    }
+                }
+            }
+        }
+
+        let activeTrackIDs = Set(loadedBox.tracks.map(\.id))
+        previewCache = previewCache.filter { activeTrackIDs.contains($0.key) }
+        return replacingTracks(in: loadedBox) { resolvedTracks[$0.id] ?? $0 }
+    }
+
+    private func replacingTracks(
+        in box: TrackBox,
+        transform: (Track) -> Track
+    ) -> TrackBox {
+        TrackBox(
+            id: box.id,
+            name: box.name,
+            description: box.description,
+            isPublic: box.isPublic,
+            createdAt: box.createdAt,
+            tracks: box.tracks.map(transform)
+        )
     }
 }

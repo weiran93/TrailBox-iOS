@@ -277,6 +277,28 @@ private struct RouteDecisionSummary {
     }
 }
 
+private struct DetailSectionTitle: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .bold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(TrailBoxColor.primaryDark)
+                .frame(width: 30, height: 30)
+                .background(
+                    TrailBoxColor.primary.opacity(0.1),
+                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                )
+            Text(title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(TrailBoxColor.text)
+        }
+    }
+}
+
 struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
@@ -574,9 +596,7 @@ struct TrackDetailView: View {
             SectionCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("与你的能力匹配", systemImage: "figure.run.circle.fill")
-                            .font(.headline)
-                            .foregroundStyle(TrailBoxColor.text)
+                        DetailSectionTitle(title: "与你的能力匹配", systemImage: "figure.run.circle.fill")
                         Spacer()
                         Text("\(Int(fit.score.rounded()))%")
                             .font(.title2.weight(.heavy))
@@ -610,7 +630,7 @@ struct TrackDetailView: View {
             SectionCard {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Text("路线分析").font(.headline)
+                        DetailSectionTitle(title: "路线分析", systemImage: "chart.line.uptrend.xyaxis")
                         Spacer()
                         Text(analysis.difficultyLevel)
                             .font(.caption.weight(.bold))
@@ -646,7 +666,7 @@ struct TrackDetailView: View {
             if let preparation = analysis.preparation {
                 SectionCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("出发准备").font(.headline)
+                        DetailSectionTitle(title: "出发准备", systemImage: "backpack.fill")
                         HStack(spacing: 0) {
                             intelligenceMetric(preparation.recommendedWaterL.map { String(format: "%.1f L", $0) } ?? "-", "建议饮水")
                             intelligenceMetric(preparation.recommendedSupplyCount.map { "\($0) 次" } ?? "-", "补给次数")
@@ -720,7 +740,7 @@ struct TrackDetailView: View {
         Color.clear.frame(height: 0).id(RouteDetailSection.facilities)
         SectionCard {
             VStack(alignment: .leading, spacing: 12) {
-                Text("沿途设施").font(.headline)
+                DetailSectionTitle(title: "沿途设施", systemImage: "mappin.and.ellipse")
                 if (routeIntelligence.isLoadingPOIs || routeIntelligence.isDiscoveringPOIs)
                     && routeIntelligence.pois.isEmpty
                     && routeIntelligence.discoveredPOIs.isEmpty {
@@ -816,7 +836,7 @@ struct TrackDetailView: View {
         if !routeIntelligence.conditions.isEmpty {
             SectionCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("近期路况").font(.headline)
+                    DetailSectionTitle(title: "近期路况", systemImage: "exclamationmark.triangle.fill")
                     ForEach(routeIntelligence.conditions.prefix(4)) { condition in
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: condition.severity == "warning" ? "exclamationmark.triangle.fill" : "info.circle.fill")
@@ -842,8 +862,7 @@ struct TrackDetailView: View {
             SectionCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("跑友完成记录", systemImage: "checkmark.circle.fill")
-                            .font(.headline)
+                        DetailSectionTitle(title: "跑友完成记录", systemImage: "checkmark.circle.fill")
                         Spacer()
                         Text("\(completions.count) 次")
                             .font(.subheadline.weight(.bold))
@@ -864,7 +883,7 @@ struct TrackDetailView: View {
             SectionCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("跑友评价").font(.headline)
+                        DetailSectionTitle(title: "跑友评价", systemImage: "star.fill")
                         Spacer()
                         Text("\(reviews.count) 条").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
                     }
@@ -922,9 +941,7 @@ struct TrackDetailView: View {
         return SectionCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
-                    Label("出发决策", systemImage: "figure.hiking")
-                        .font(.headline)
-                        .foregroundStyle(TrailBoxColor.text)
+                    DetailSectionTitle(title: "出发决策", systemImage: "figure.hiking")
                     Spacer(minLength: 8)
                     if decision.isUpdating {
                         ProgressView()
@@ -1271,7 +1288,11 @@ struct TrackDetailView: View {
     private func trackMetadataSection(_ track: Track) -> some View {
         if track.city != nil || !track.tagList.isEmpty {
             SectionCard {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
+                    DetailSectionTitle(
+                        title: isPublicSource ? "路线信息" : "记录信息",
+                        systemImage: "info.circle.fill"
+                    )
                     if let city = track.city {
                         HStack {
                             Text("城市").foregroundStyle(TrailBoxColor.secondaryText)
@@ -1282,7 +1303,9 @@ struct TrackDetailView: View {
                     if !track.tagList.isEmpty {
                         Divider()
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("标签").font(.headline)
+                            Text("标签")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(TrailBoxColor.secondaryText)
                             Text(track.tagList.joined(separator: " · "))
                                 .font(.subheadline)
                                 .foregroundStyle(TrailBoxColor.secondaryText)
@@ -1298,22 +1321,25 @@ struct TrackDetailView: View {
     private func routeRecommendationSection(_ track: Track) -> some View {
         if let reason = track.recommendationReason, !reason.isEmpty {
             SectionCard {
-                HStack(alignment: .top, spacing: 12) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(TrailBoxColor.primary.opacity(0.35))
-                        .frame(width: 3)
+                VStack(alignment: .leading, spacing: 12) {
+                    DetailSectionTitle(title: "路线推荐", systemImage: "quote.bubble.fill")
+                    HStack(alignment: .top, spacing: 12) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(TrailBoxColor.primary.opacity(0.35))
+                            .frame(width: 3)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(reason)
-                            .font(.subheadline)
-                            .lineSpacing(3)
-                            .foregroundStyle(TrailBoxColor.text)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(reason)
+                                .font(.subheadline)
+                                .lineSpacing(3)
+                                .foregroundStyle(TrailBoxColor.text)
+                                .fixedSize(horizontal: false, vertical: true)
 
-                        if let contributor = track.contributorName, track.showContributor {
-                            Text("—— \(contributor) 推荐")
-                                .font(.caption)
-                                .foregroundStyle(TrailBoxColor.secondaryText)
+                            if let contributor = track.contributorName, track.showContributor {
+                                Text("—— \(contributor) 推荐")
+                                    .font(.caption)
+                                    .foregroundStyle(TrailBoxColor.secondaryText)
+                            }
                         }
                     }
                 }
@@ -1361,8 +1387,7 @@ struct TrackDetailView: View {
         SectionCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Label("路线天气", systemImage: weatherIcon(weather.current.weatherCode))
-                        .font(.headline)
+                    DetailSectionTitle(title: "路线天气", systemImage: weatherIcon(weather.current.weatherCode))
                     Spacer()
                     if let temperature = weather.current.temperature {
                         Text("\(Int(temperature.rounded()))°")
@@ -1464,8 +1489,7 @@ struct TrackDetailView: View {
     private var activityMatchesCard: some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 12) {
-                Label("匹配到公开路线", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                    .font(.headline)
+                DetailSectionTitle(title: "匹配到公开路线", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                 ForEach(routeIntelligence.activityMatches.prefix(3)) { match in
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -1574,9 +1598,7 @@ struct TrackDetailView: View {
         SectionCard {
             VStack(alignment: .leading, spacing: 15) {
                 HStack {
-                    Label("路线概览", systemImage: "mountain.2.fill")
-                        .font(.headline)
-                        .foregroundStyle(TrailBoxColor.primaryDark)
+                    DetailSectionTitle(title: "路线概览", systemImage: "mountain.2.fill")
                     Spacer()
                     Text(metrics.difficulty ?? "待评估")
                         .font(.caption.weight(.bold))
@@ -1670,9 +1692,7 @@ struct TrackDetailView: View {
     private func activityOverviewCard(_ track: Track) -> some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 15) {
-                Label("运动概览", systemImage: "speedometer")
-                    .font(.headline)
-                    .foregroundStyle(TrailBoxColor.primaryDark)
+                DetailSectionTitle(title: "运动概览", systemImage: "speedometer")
                 HStack(spacing: 0) {
                     routeSnapshotMetric(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
                     routeSnapshotMetric(track.durationSec.map(DisplayFormat.duration) ?? "-", "用时", TrailBoxColor.sky)
@@ -1691,7 +1711,7 @@ struct TrackDetailView: View {
     private func analysisCard(_ track: Track) -> some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 10) {
-                Label("AI 运动分析", systemImage: "sparkles").font(.headline.weight(.bold))
+                DetailSectionTitle(title: "AI 运动分析", systemImage: "sparkles")
                 if isAnalyzing {
                     Text("分析中…").font(.headline.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 14).background(TrailBoxColor.primary).clipShape(RoundedRectangle(cornerRadius: 10))
                     Divider()
@@ -2267,9 +2287,7 @@ private struct ElevationChart: View {
     var body: some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 15) {
-                Label(title, systemImage: "mountain.2.fill")
-                    .font(.headline)
-                    .foregroundStyle(TrailBoxColor.primaryDark)
+                DetailSectionTitle(title: title, systemImage: "mountain.2.fill")
 
                 if samples.isEmpty {
                     Text("暂无海拔数据")
@@ -2381,9 +2399,7 @@ private struct GradeChart: View {
     var body: some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 15) {
-                Label("坡度剖面", systemImage: "chart.xyaxis.line")
-                    .font(.headline)
-                    .foregroundStyle(TrailBoxColor.primaryDark)
+                DetailSectionTitle(title: "坡度剖面", systemImage: "chart.xyaxis.line")
                 if metrics.gradeSamples.isEmpty {
                     Text("暂无可用于计算坡度的海拔数据")
                         .font(.subheadline)
@@ -2514,9 +2530,7 @@ private struct ActivityCharts: View {
         return SectionCard {
             VStack(alignment: .leading, spacing: 15) {
                 HStack {
-                    Label(title, systemImage: systemImage)
-                        .font(.headline)
-                        .foregroundStyle(color)
+                    DetailSectionTitle(title: title, systemImage: systemImage)
                     Spacer()
                     if let average {
                         Text("均值 \(formattedActivityValue(average, unit: unit)) \(unit)")
