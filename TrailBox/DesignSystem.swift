@@ -1,13 +1,19 @@
 import SwiftUI
 
 enum TrailBoxColor {
-    static let primary = Color(red: 34 / 255, green: 197 / 255, blue: 94 / 255)
-    static let primaryDark = Color(red: 22 / 255, green: 163 / 255, blue: 74 / 255)
-    static let background = Color(uiColor: .systemGroupedBackground)
-    static let surface = Color(uiColor: .secondarySystemGroupedBackground)
+    static let primary = Color(red: 46 / 255, green: 139 / 255, blue: 78 / 255)
+    static let primaryDark = Color(red: 18 / 255, green: 82 / 255, blue: 52 / 255)
+    static let moss = Color(red: 102 / 255, green: 132 / 255, blue: 73 / 255)
+    static let sand = Color(red: 239 / 255, green: 230 / 255, blue: 203 / 255)
+    static let stone = Color(red: 105 / 255, green: 103 / 255, blue: 91 / 255)
+    static let sky = Color(red: 67 / 255, green: 132 / 255, blue: 168 / 255)
+    static let warning = Color(red: 196 / 255, green: 102 / 255, blue: 48 / 255)
+    static let background = Color(red: 245 / 255, green: 242 / 255, blue: 230 / 255)
+    static let surface = Color(red: 253 / 255, green: 252 / 255, blue: 247 / 255)
+    static let surfaceMuted = Color(red: 237 / 255, green: 238 / 255, blue: 226 / 255)
     static let text = Color.primary
     static let secondaryText = Color.secondary
-    static let border = Color(uiColor: .separator)
+    static let border = primaryDark.opacity(0.14)
     static let danger = Color(red: 239 / 255, green: 68 / 255, blue: 68 / 255)
 }
 
@@ -47,8 +53,36 @@ struct SectionCard<Content: View>: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(TrailBoxColor.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(TrailBoxColor.border.opacity(0.55), lineWidth: 0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
+            .shadow(color: TrailBoxColor.primaryDark.opacity(0.055), radius: 12, y: 5)
+    }
+}
+
+struct TrailPageBackground: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [TrailBoxColor.background, TrailBoxColor.sand.opacity(0.42), TrailBoxColor.background],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Canvas { context, size in
+                for index in 0..<8 {
+                    let baseY = size.height * CGFloat(0.08 + Double(index) * 0.135)
+                    var contour = Path()
+                    contour.move(to: CGPoint(x: -20, y: baseY))
+                    stride(from: CGFloat(0), through: size.width + 24, by: 18).forEach { x in
+                        let phase = Double(x / max(size.width, 1)) * .pi * 2.2 + Double(index) * 0.7
+                        let y = baseY + CGFloat(sin(phase)) * CGFloat(7 + (index % 3) * 2)
+                        contour.addLine(to: CGPoint(x: x, y: y))
+                    }
+                    context.stroke(contour, with: .color(TrailBoxColor.primaryDark.opacity(0.035)), lineWidth: 0.8)
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 }
 

@@ -193,6 +193,8 @@ struct ExploreView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(TrailPageBackground())
         .refreshable { @MainActor in
             await viewModel.load(token: session.token, isRefresh: true)
         }
@@ -222,10 +224,12 @@ struct ExploreView: View {
 
     private func tagButton(_ title: String, tag: String?) -> some View {
         Button(title) { viewModel.selectedTag = tag }
-            .font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 7)
-            .background(viewModel.selectedTag == tag ? TrailBoxColor.primary : TrailBoxColor.surface)
+            .font(.subheadline.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 8)
+            .background(viewModel.selectedTag == tag ? TrailBoxColor.primaryDark : TrailBoxColor.surface)
             .foregroundStyle(viewModel.selectedTag == tag ? .white : TrailBoxColor.text)
-            .clipShape(Capsule()).overlay(Capsule().stroke(viewModel.selectedTag == tag ? TrailBoxColor.primary : TrailBoxColor.border))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(viewModel.selectedTag == tag ? Color.clear : TrailBoxColor.border, lineWidth: 0.75))
+            .shadow(color: viewModel.selectedTag == tag ? TrailBoxColor.primaryDark.opacity(0.16) : .clear, radius: 8, y: 3)
     }
 }
 
@@ -249,8 +253,8 @@ struct TrackCard: View {
             ZStack {
                 RouteThumbnail(points: track.points)
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(16.0 / 8.0, contentMode: .fit)
-                LinearGradient(colors: [.black.opacity(0.18), .clear, .black.opacity(0.64)], startPoint: .top, endPoint: .bottom)
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                LinearGradient(colors: [.black.opacity(0.2), .clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text("路线负荷 · \(routeEffort)")
@@ -258,32 +262,59 @@ struct TrackCard: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
-                            .background(.black.opacity(0.5), in: Capsule())
+                            .background(.black.opacity(0.52), in: Capsule())
                         Spacer()
                     }
                     Spacer()
-                    Text(track.name).font(.headline.bold()).foregroundStyle(.white).lineLimit(2).shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(track.name)
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                        if !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.82))
+                                .lineLimit(1)
+                        }
+                    }
                 }.padding(14)
             }
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text(subtitle).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
-                    Spacer(minLength: 0)
                     if let city = track.city, !city.isEmpty {
-                        Text(city).font(.caption.weight(.medium)).foregroundStyle(TrailBoxColor.primaryDark).padding(.horizontal, 8).padding(.vertical, 4).background(TrailBoxColor.primary.opacity(0.12)).clipShape(Capsule())
+                        Label(city, systemImage: "mappin.and.ellipse")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.stone)
+                    }
+                    Spacer(minLength: 0)
+                    if let sport = track.sport, !sport.isEmpty {
+                        Text(sport)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.primaryDark)
                     }
                 }
-                if !track.tagList.isEmpty { HStack(spacing: 5) { ForEach(track.tagList.prefix(3), id: \.self) { Text($0).font(.caption.weight(.medium)).foregroundStyle(TrailBoxColor.primaryDark).padding(.horizontal, 8).padding(.vertical, 4).background(TrailBoxColor.primary.opacity(0.12)).clipShape(Capsule()) } } }
-                Divider().overlay(TrailBoxColor.border)
+                if !track.tagList.isEmpty {
+                    Text(track.tagList.prefix(3).map { "#\($0)" }.joined(separator: "   "))
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .lineLimit(1)
+                }
                 HStack(spacing: 0) {
                     exploreStat(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
-                    exploreStat(compactElevation(track.elevationGainM), "爬升", TrailBoxColor.primary)
+                    exploreStat(compactElevation(track.elevationGainM), "累计爬升", TrailBoxColor.primaryDark)
                     exploreStat(climbDensityText, "爬升密度", routeEffortColor)
                 }
-            }.padding(16)
+                .padding(.vertical, 12)
+                .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(14)
         }
-        .background(TrailBoxColor.surface).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+        .background(TrailBoxColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
+        .shadow(color: TrailBoxColor.primaryDark.opacity(0.11), radius: 16, y: 8)
     }
 
     private var activityCard: some View {
@@ -306,7 +337,7 @@ struct TrackCard: View {
 
     private func activityStat(_ value: String, _ label: String) -> some View { VStack(spacing: 4) { Text(value).font(.title3).foregroundStyle(TrailBoxColor.text); Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }.frame(maxWidth: .infinity) }
 
-    private func exploreStat(_ value: String, _ label: String, _ color: Color) -> some View { VStack(spacing: 3) { Text(value).font(.title3.bold()).foregroundStyle(color); Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }.frame(maxWidth: .infinity) }
+    private func exploreStat(_ value: String, _ label: String, _ color: Color) -> some View { VStack(spacing: 4) { Text(value).font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.72); Text(label).font(.caption2.weight(.medium)).foregroundStyle(TrailBoxColor.secondaryText) }.frame(maxWidth: .infinity) }
     private func compactElevation(_ value: Double) -> String { value >= 1000 ? String(format: "%.2fk", value / 1000) : String(format: "%.0f", value) }
 
     private var climbDensity: Double {
@@ -350,13 +381,13 @@ struct TrackCard: View {
 struct RouteThumbnail: View {
     let points: [TrackPoint]
     var body: some View { Canvas { context, size in
-        context.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(Gradient(colors: [Color(red: 0.93, green: 0.96, blue: 0.93), Color(red: 0.83, green: 0.89, blue: 0.84)]), startPoint: .zero, endPoint: CGPoint(x: size.width, y: size.height)))
-        for index in 0..<6 {
-            let y = CGFloat(14 + index * 27)
+        context.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(Gradient(colors: [TrailBoxColor.sand.opacity(0.9), TrailBoxColor.surfaceMuted, TrailBoxColor.moss.opacity(0.32)]), startPoint: .zero, endPoint: CGPoint(x: size.width, y: size.height)))
+        for index in 0..<8 {
+            let y = CGFloat(8 + index * 25)
             var contour = Path()
             contour.move(to: CGPoint(x: -20, y: y + (index.isMultiple(of: 2) ? 10 : -10)))
             contour.addCurve(to: CGPoint(x: size.width + 20, y: y), control1: CGPoint(x: size.width * 0.25, y: y - 22), control2: CGPoint(x: size.width * 0.72, y: y + 22))
-            context.stroke(contour, with: .color(Color(red: 0.22, green: 0.36, blue: 0.26).opacity(0.12)), lineWidth: 1)
+            context.stroke(contour, with: .color(TrailBoxColor.primaryDark.opacity(index.isMultiple(of: 3) ? 0.16 : 0.09)), lineWidth: index.isMultiple(of: 3) ? 1.2 : 0.8)
         }
         guard points.count > 1 else { return }
         // Only the bottom title overlays the image; leave a small perimeter around the route elsewhere.
@@ -386,7 +417,12 @@ struct RouteThumbnail: View {
             )
         }
         var path = Path(); path.move(to: position(points[0])); for point in points.dropFirst() { path.addLine(to: position(point)) }
-        context.stroke(path, with: .color(Color(red: 0.09, green: 0.42, blue: 0.23)), style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
-        for (point, color) in [(points.first!, Color.green), (points.last!, Color.red)] { context.fill(Path(ellipseIn: CGRect(x: position(point).x - 5, y: position(point).y - 5, width: 10, height: 10)), with: .color(color)) }
+        context.stroke(path, with: .color(.white.opacity(0.82)), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+        context.stroke(path, with: .color(TrailBoxColor.primaryDark), style: StrokeStyle(lineWidth: 3.8, lineCap: .round, lineJoin: .round))
+        for (point, color) in [(points.first!, TrailBoxColor.primary), (points.last!, TrailBoxColor.warning)] {
+            let center = position(point)
+            context.fill(Path(ellipseIn: CGRect(x: center.x - 7, y: center.y - 7, width: 14, height: 14)), with: .color(.white.opacity(0.94)))
+            context.fill(Path(ellipseIn: CGRect(x: center.x - 4.5, y: center.y - 4.5, width: 9, height: 9)), with: .color(color))
+        }
     } }
 }

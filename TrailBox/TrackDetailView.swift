@@ -258,7 +258,7 @@ struct TrackDetailView: View {
             case .content(let track): details(track)
             }
         }
-        .background(TrailBoxColor.background)
+        .background(TrailPageBackground())
         .navigationTitle(isPublicSource ? "轨迹详情" : "记录详情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
@@ -290,25 +290,29 @@ struct TrackDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if isPublicSource {
-                    VStack(alignment: .leading, spacing: 5) { Text(track.name).font(.title2.bold()).foregroundStyle(TrailBoxColor.text); if let description = track.description { Text(description).font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) } }.padding(.horizontal, 16).padding(.top, 8)
+                    publicRouteHero(track)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
                 } else { activityHero(track).padding(.horizontal, 16).padding(.top, 8) }
                 if !isPublicSource { analysisCard(track) }
                 if !isPublicSource, !routeIntelligence.activityMatches.isEmpty {
                     activityMatchesCard
                         .padding(.horizontal, 16)
                 }
-                ZStack(alignment: .topTrailing) {
-                    TrackMap(points: track.points, pois: routeMapPOIs).frame(height: 280)
-                    Button { showFullscreenMap = true } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(TrailBoxColor.text)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Circle())
+                if !isPublicSource {
+                    ZStack(alignment: .topTrailing) {
+                        TrackMap(points: track.points, pois: routeMapPOIs).frame(height: 280)
+                        Button { showFullscreenMap = true } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(TrailBoxColor.text)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .trailBoxGlass(in: Circle())
+                        .padding(12)
                     }
-                    .buttonStyle(.plain)
-                    .trailBoxGlass(in: Circle())
-                    .padding(12)
                 }
                 if let start = track.points.first, let end = track.points.last {
                     HStack(spacing: 12) {
@@ -316,24 +320,19 @@ struct TrackDetailView: View {
                         endpointButton(title: "终点", point: end, trackName: track.name, color: TrailBoxColor.danger)
                     }.padding(.horizontal, 16)
                 }
-                SectionCard {
-                    HStack(spacing: 0) {
-                        metric(DisplayFormat.distance(track.distanceM), "距离")
-                        metric(DisplayFormat.elevation(track.elevationGainM), "爬升")
-                        metric(DisplayFormat.elevation(track.elevationLossM), "下降")
-                        metric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔")
-                    }
-                }.padding(.horizontal, 16)
                 if isPublicSource {
+                    publicRouteSnapshot(track, metrics: metrics)
+                        .padding(.horizontal, 16)
+                    routeIntelligenceSections(track)
+                } else {
                     SectionCard {
                         HStack(spacing: 0) {
-                            metric(metrics.elevationRange.map(DisplayFormat.elevation) ?? "-", "海拔落差")
-                            metric(metrics.maximumGrade.map(formatGrade) ?? "-", "最大坡度")
-                            metric(metrics.averageGrade.map(formatGrade) ?? "-", "平均坡度")
-                            difficultyMetric(metrics.difficulty)
+                            metric(DisplayFormat.distance(track.distanceM), "距离")
+                            metric(DisplayFormat.elevation(track.elevationGainM), "爬升")
+                            metric(DisplayFormat.elevation(track.elevationLossM), "下降")
+                            metric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔")
                         }
                     }.padding(.horizontal, 16)
-                    routeIntelligenceSections(track)
                 }
                 ElevationChart(points: track.points, title: "海拔剖面").padding(.horizontal, 16)
                 if !isPublicSource {
@@ -968,6 +967,105 @@ struct TrackDetailView: View {
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
     }
+
+    private func publicRouteHero(_ track: Track) -> some View {
+        ZStack(alignment: .topTrailing) {
+            ZStack(alignment: .bottomLeading) {
+                TrackMap(points: track.points, pois: routeMapPOIs)
+                    .frame(height: 330)
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.12), .black.opacity(0.78)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 7) {
+                        if let city = track.city, !city.isEmpty {
+                            Label(city, systemImage: "mappin.and.ellipse")
+                                .font(.caption.weight(.bold))
+                        }
+                        if let tag = track.tagList.first {
+                            Text(tag).font(.caption.weight(.bold))
+                        }
+                    }
+                    .foregroundStyle(.white.opacity(0.92))
+
+                    Text(track.name)
+                        .font(.system(size: 27, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .shadow(color: .black.opacity(0.32), radius: 4, y: 2)
+
+                    if let description = track.description, !description.isEmpty {
+                        Text(description)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.82))
+                            .lineLimit(2)
+                    }
+                }
+                .padding(18)
+                .allowsHitTesting(false)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.58), lineWidth: 0.8))
+
+            Button { showFullscreenMap = true } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(TrailBoxColor.text)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .trailBoxGlass(in: Circle())
+            .padding(12)
+        }
+        .shadow(color: TrailBoxColor.primaryDark.opacity(0.18), radius: 18, y: 9)
+    }
+
+    private func publicRouteSnapshot(_ track: Track, metrics: RouteMetrics) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 15) {
+                HStack {
+                    Label("路线概览", systemImage: "mountain.2.fill")
+                        .font(.headline)
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                    Spacer()
+                    Text(metrics.difficulty ?? "待评估")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(difficultyColor(metrics.difficulty))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(difficultyColor(metrics.difficulty).opacity(0.1), in: Capsule())
+                }
+                HStack(spacing: 0) {
+                    routeSnapshotMetric(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
+                    routeSnapshotMetric(DisplayFormat.elevation(track.elevationGainM), "累计爬升", TrailBoxColor.primaryDark)
+                    routeSnapshotMetric(metrics.maximumGrade.map(formatGrade) ?? "-", "最大坡度", TrailBoxColor.warning)
+                    routeSnapshotMetric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔", TrailBoxColor.sky)
+                }
+            }
+        }
+    }
+
+    private func routeSnapshotMetric(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(TrailBoxColor.secondaryText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private func activityHero(_ track: Track) -> some View {
         SectionCard {
             VStack(alignment: .leading, spacing: 12) {
