@@ -13,7 +13,13 @@ struct DiscoveredRoutePOI: Identifiable, Equatable {
 
 @MainActor
 final class RouteIntelligenceStore: ObservableObject {
+    private enum POIErrorKind: Equatable {
+        case loading
+        case saving
+    }
+
     private static var discoveredPOICache: [String: [DiscoveredRoutePOI]] = [:]
+    private var poiErrorKind: POIErrorKind?
 
     @Published private(set) var analysis: RouteAnalysis?
     @Published private(set) var personalFit: RoutePersonalFit?
@@ -27,50 +33,102 @@ final class RouteIntelligenceStore: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingAnalysis = false
     @Published private(set) var isLoadingWeather = false
-    @Published private(set) var isLoadingPOIs = true
+    @Published private(set) var isLoadingPOIs = false
     @Published private(set) var isDiscoveringPOIs = false
     @Published private(set) var isSavingPOIs = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var analysisErrorMessage: String?
     @Published private(set) var weatherErrorMessage: String?
+    @Published private(set) var lastCheckedAt: Date?
 
     func load(trackID: String, token: String?) async {
+        while isLoading {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if Task.isCancelled { return }
+        }
         isLoading = true
-        isLoadingAnalysis = true
-        isLoadingWeather = true
-        isLoadingPOIs = true
         errorMessage = nil
+        poiErrorKind = nil
+
+        async let analysisTask: Void = refreshAnalysis(trackID: trackID, token: token)
+        async let weatherTask: Void = refreshWeather(trackID: trackID)
+        async let poiTask: Void = refreshPOIs(trackID: trackID)
+        async let communityTask: Void = refreshCommunity(trackID: trackID)
+        _ = await (analysisTask, weatherTask, poiTask, communityTask)
+
+        lastCheckedAt = Date()
+        isLoading = false
+    }
+
+    func refreshAnalysis(trackID: String, token: String?) async {
+        guard !isLoadingAnalysis else { return }
+        isLoadingAnalysis = true
         analysisErrorMessage = nil
-        weatherErrorMessage = nil
+        defer { isLoadingAnalysis = false }
 
         async let analysisResult: RouteAnalysis? = optionalRequest("/tracks/\(trackID)/analysis", token: token)
-        async let weatherResult: RouteWeather? = optionalRequest("/tracks/\(trackID)/weather")
-        async let poiResult: [RoutePOI]? = optionalRequest("/tracks/\(trackID)/pois")
+        async let fitResult: RoutePersonalFit? = token == nil
+            ? nil
+            : optionalRequest("/tracks/\(trackID)/personal-fit", token: token)
+        let fetchedAnalysis = await analysisResult
+        let fetchedFit = await fitResult
+
+        if let fetchedAnalysis {
+            analysis = fetchedAnalysis
+        } else {
+            analysisErrorMessage = analysis == nil
+                ? "路线分析暂时不可用，基础轨迹信息仍可正常查看。"
+                : "路线分析刷新失败，正在显示上次结果。"
+        }
+        if token == nil {
+            personalFit = nil
+        } else if let fetchedFit {
+            personalFit = fetchedFit
+        }
+    }
+
+    func refreshWeather(trackID: String) async {
+        guard !isLoadingWeather else { return }
+        isLoadingWeather = true
+        weatherErrorMessage = nil
+        defer { isLoadingWeather = false }
+
+        let fetchedWeather: RouteWeather? = await optionalRequest("/tracks/\(trackID)/weather")
+        if let fetchedWeather {
+            weather = fetchedWeather
+        } else {
+            weatherErrorMessage = weather == nil
+                ? "路线天气暂时不可用，请稍后重试。"
+                : "天气刷新失败，正在显示上次结果。"
+        }
+    }
+
+    func refreshPOIs(trackID: String) async {
+        guard !isLoadingPOIs else { return }
+        isLoadingPOIs = true
+        errorMessage = nil
+        poiErrorKind = nil
+        defer { isLoadingPOIs = false }
+
+        let fetchedPOIs: [RoutePOI]? = await optionalRequest("/tracks/\(trackID)/pois")
+        if let fetchedPOIs {
+            pois = fetchedPOIs
+            if !fetchedPOIs.isEmpty { discoveredPOIs = [] }
+        } else {
+            poiErrorKind = .loading
+            errorMessage = pois.isEmpty
+                ? "设施信息暂时不可用，可稍后重试或查看地图发现结果。"
+                : "设施信息刷新失败，正在显示上次结果。"
+        }
+    }
+
+    private func refreshCommunity(trackID: String) async {
         async let conditionResult: [RouteCondition]? = optionalRequest("/tracks/\(trackID)/conditions")
         async let reviewResult: RouteReviewSummary? = optionalRequest("/tracks/\(trackID)/reviews")
         async let completionResult: RouteCompletionSummary? = optionalRequest("/tracks/\(trackID)/completions")
-        async let fitResult: RoutePersonalFit? = token == nil ? nil : optionalRequest("/tracks/\(trackID)/personal-fit", token: token)
-
-        pois = await poiResult ?? []
-        isLoadingPOIs = false
-        if !pois.isEmpty {
-            discoveredPOIs = []
-        }
-        analysis = await analysisResult
-        isLoadingAnalysis = false
-        if analysis == nil {
-            analysisErrorMessage = "路线分析暂时不可用，基础轨迹信息仍可正常查看。"
-        }
-        personalFit = await fitResult
-        weather = await weatherResult
-        isLoadingWeather = false
-        if weather == nil {
-            weatherErrorMessage = "路线天气暂时不可用，请稍后重试。"
-        }
-        conditions = await conditionResult ?? []
-        reviews = await reviewResult
-        completions = await completionResult
-        isLoading = false
+        if let fetchedConditions = await conditionResult { conditions = fetchedConditions }
+        if let fetchedReviews = await reviewResult { reviews = fetchedReviews }
+        if let fetchedCompletions = await completionResult { completions = fetchedCompletions }
     }
 
     func discoverNearbyPOIs(trackID: String, points: [TrackPoint]) async {
@@ -158,6 +216,7 @@ final class RouteIntelligenceStore: ObservableObject {
         guard !discoveredPOIs.isEmpty else { return }
         isSavingPOIs = true
         errorMessage = nil
+        poiErrorKind = nil
         let inputs = discoveredPOIs.map {
             RoutePOIInput(
                 type: $0.type,
@@ -180,9 +239,18 @@ final class RouteIntelligenceStore: ObservableObject {
             discoveredPOIs = []
             Self.discoveredPOICache.removeValue(forKey: trackID)
         } catch {
+            poiErrorKind = .saving
             errorMessage = "设施确认失败，请稍后重试。"
         }
         isSavingPOIs = false
+    }
+
+    func retryPOIs(trackID: String, token: String?) async {
+        if poiErrorKind == .saving, let token {
+            await confirmDiscoveredPOIs(trackID: trackID, token: token)
+        } else {
+            await refreshPOIs(trackID: trackID)
+        }
     }
 
     func loadActivityMatches(activityID: String, token: String) async {

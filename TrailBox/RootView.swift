@@ -55,6 +55,29 @@ struct RootView: View {
         } message: {
             Text(savedRoutes.errorMessage ?? "")
         }
+        .overlay(alignment: .bottom) {
+            if let feedback = savedRoutes.feedback {
+                SavedRouteFeedbackBanner(
+                    feedback: feedback,
+                    isWorking: savedRoutes.savingTrackIDs.contains(feedback.trackID),
+                    undo: {
+                        guard let token = session.token else { return }
+                        Task { await savedRoutes.undoRemoval(feedback, token: token) }
+                    }
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 82)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .task(id: feedback.id) {
+                    try? await Task.sleep(nanoseconds: feedback.allowsUndo ? 4_000_000_000 : 2_400_000_000)
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        savedRoutes.dismissFeedback(id: feedback.id)
+                    }
+                }
+            }
+        }
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: savedRoutes.feedback?.id)
     }
 
     private var tabSelection: Binding<Tab> {
@@ -70,5 +93,48 @@ struct RootView: View {
                 pendingTabAfterAuthentication = nil
             }
         )
+    }
+}
+
+private struct SavedRouteFeedbackBanner: View {
+    let feedback: SavedRouteFeedback
+    let isWorking: Bool
+    let undo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: feedback.kind == .removed ? "bookmark.slash.fill" : "bookmark.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(feedback.kind == .removed ? TrailBoxColor.warning : TrailBoxColor.primaryDark)
+                .frame(width: 34, height: 34)
+                .background(.white.opacity(0.7), in: Circle())
+
+            Text(feedback.message)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(TrailBoxColor.text)
+
+            Spacer(minLength: 8)
+
+            if feedback.allowsUndo {
+                Button(action: undo) {
+                    if isWorking {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("撤销")
+                            .font(.subheadline.weight(.bold))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(TrailBoxColor.primaryDark)
+                .frame(minWidth: 44, minHeight: 44)
+                .disabled(isWorking)
+            }
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, feedback.allowsUndo ? 8 : 16)
+        .frame(minHeight: 56)
+        .trailBoxGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        .accessibilityElement(children: .contain)
     }
 }

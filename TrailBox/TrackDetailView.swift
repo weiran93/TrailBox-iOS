@@ -420,6 +420,13 @@ struct TrackDetailView: View {
                     }
                     .padding(.bottom, 24)
                 }
+                .refreshable {
+                    if isPublicSource {
+                        await routeIntelligence.load(trackID: track.id, token: session.token)
+                    } else if let token = session.token {
+                        await routeIntelligence.loadActivityMatches(activityID: track.id, token: token)
+                    }
+                }
             }
             if isVoiceGestureActive && voiceRecorder.isRecording {
                 VoiceTranscriptBubble(transcript: voiceRecorder.transcript)
@@ -439,10 +446,14 @@ struct TrackDetailView: View {
                         }
                         Task { await savedRoutes.toggle(trackID: track.id, token: token) }
                     } label: {
-                        Image(systemName: savedRoutes.isSaved(track.id) ? "bookmark.fill" : "bookmark")
+                        if savedRoutes.savingTrackIDs.contains(track.id) {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: savedRoutes.isSaved(track.id) ? "bookmark.fill" : "bookmark")
+                        }
                     }
                     .disabled(savedRoutes.savingTrackIDs.contains(track.id))
-                    .accessibilityLabel(savedRoutes.isSaved(track.id) ? "取消收藏路线" : "收藏路线")
+                    .accessibilityLabel(savedRoutes.savingTrackIDs.contains(track.id) ? "正在更新收藏" : (savedRoutes.isSaved(track.id) ? "取消收藏路线" : "收藏路线"))
                 }
                 if !isPublicSource {
                     Menu {
@@ -451,6 +462,13 @@ struct TrackDetailView: View {
                     } label: { Image(systemName: "ellipsis") }
                 } else {
                     Menu {
+                        Button {
+                            Task { await routeIntelligence.load(trackID: track.id, token: session.token) }
+                        } label: {
+                            Label("刷新路线情报", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(routeIntelligence.isLoading)
+                        Divider()
                         if isOwner(of: track) {
                             Button("编辑路线") { showEdit = true }
                             Button("删除路线", role: .destructive) { showDeleteConfirmation = true }
@@ -516,7 +534,7 @@ struct TrackDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Button("重试") {
-                        Task { await routeIntelligence.load(trackID: track.id, token: session.token) }
+                        Task { await routeIntelligence.refreshAnalysis(trackID: track.id, token: session.token) }
                     }
                     .font(.subheadline.weight(.semibold))
                 }
@@ -631,6 +649,14 @@ struct TrackDetailView: View {
             }
         }
 
+        if routeIntelligence.analysis != nil,
+           let message = routeIntelligence.analysisErrorMessage {
+            routeRefreshIssue(message, systemImage: "chart.line.uptrend.xyaxis") {
+                Task { await routeIntelligence.refreshAnalysis(trackID: track.id, token: session.token) }
+            }
+            .padding(.horizontal, 16)
+        }
+
         if let weather = routeIntelligence.weather {
             weatherCard(weather)
                 .padding(.horizontal, 16)
@@ -647,13 +673,21 @@ struct TrackDetailView: View {
                         .foregroundStyle(TrailBoxColor.secondaryText)
                     Spacer(minLength: 8)
                     Button("重试") {
-                        Task { await routeIntelligence.load(trackID: track.id, token: session.token) }
+                        Task { await routeIntelligence.refreshWeather(trackID: track.id) }
                     }
                     .font(.subheadline.weight(.semibold))
                 }
             }
             .padding(.horizontal, 16)
             .transition(.opacity)
+        }
+
+        if routeIntelligence.weather != nil,
+           let message = routeIntelligence.weatherErrorMessage {
+            routeRefreshIssue(message, systemImage: "cloud.sun") {
+                Task { await routeIntelligence.refreshWeather(trackID: track.id) }
+            }
+            .padding(.horizontal, 16)
         }
 
         Color.clear.frame(height: 0).id(RouteDetailSection.facilities)
@@ -729,10 +763,20 @@ struct TrackDetailView: View {
                     .buttonStyle(.plain)
                     .disabled(routeIntelligence.isSavingPOIs)
                 }
-                if let message = routeIntelligence.errorMessage, routeIntelligence.analysis != nil {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(TrailBoxColor.danger)
+                if let message = routeIntelligence.errorMessage {
+                    Divider()
+                    HStack(alignment: .top, spacing: 10) {
+                        Label(message, systemImage: "mappin.slash")
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        Button("重试") {
+                            Task { await routeIntelligence.retryPOIs(trackID: track.id, token: session.token) }
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                    }
                 }
                 sourceFootnote("地图数据与跑友确认")
             }
@@ -907,7 +951,12 @@ struct TrackDetailView: View {
                     }
                 }
 
-                Label("实时汇总 · \(decision.sourceText)", systemImage: "checkmark.seal")
+                Label(
+                    routeIntelligence.lastCheckedAt.map {
+                        "检查于 \($0.formatted(.dateTime.hour().minute())) · \(decision.sourceText)"
+                    } ?? "实时汇总 · \(decision.sourceText)",
+                    systemImage: "checkmark.seal"
+                )
                     .font(.caption2)
                     .foregroundStyle(TrailBoxColor.secondaryText)
 
@@ -1258,6 +1307,27 @@ struct TrackDetailView: View {
                 RouteSkeletonRows(count: rows)
             }
         }
+    }
+
+    private func routeRefreshIssue(
+        _ message: String,
+        systemImage: String,
+        retry: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Label(message, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(TrailBoxColor.warning)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button("重试", action: retry)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(TrailBoxColor.primaryDark)
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .background(TrailBoxColor.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private func weatherCard(_ weather: RouteWeather) -> some View {

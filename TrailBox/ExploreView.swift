@@ -15,13 +15,58 @@ final class ExploreViewModel: ObservableObject {
     @Published var sortBy = "newest"
 
     var cities: [String] { Array(Set(tracks.compactMap(\.city))).sorted() }
+    var sheetFilterCount: Int {
+        [selectedCity != nil, distanceRange != "all", sortBy != "newest"].filter { $0 }.count
+    }
+    var hasActiveFilters: Bool {
+        selectedTag != nil || selectedCity != nil || distanceRange != "all" || sortBy != "newest" || !trimmedKeyword.isEmpty
+    }
+    var activeFilterSummary: String {
+        var items: [String] = []
+        if let selectedTag { items.append(selectedTag) }
+        if let selectedCity { items.append(selectedCity) }
+        if distanceRange != "all" { items.append(distanceRangeTitle) }
+        if sortBy != "newest" { items.append(sortTitle) }
+        if !trimmedKeyword.isEmpty { items.append("“\(trimmedKeyword)”") }
+        return items.joined(separator: " · ")
+    }
     var filteredTracks: [Track] {
         let result = tracks.filter { track in
-            (selectedTag == nil || track.tagList.contains(selectedTag!)) && (selectedCity == nil || track.city == selectedCity)
-            && (keyword.isEmpty || [track.name, track.city ?? "", track.tags ?? "", track.description ?? ""].joined(separator: " ").localizedCaseInsensitiveContains(keyword))
+            (selectedTag == nil || track.tagList.contains(selectedTag ?? "")) && (selectedCity == nil || track.city == selectedCity)
+            && (trimmedKeyword.isEmpty || [track.name, track.city ?? "", track.tags ?? "", track.description ?? ""].joined(separator: " ").localizedCaseInsensitiveContains(trimmedKeyword))
             && (distanceRange == "all" || (distanceRange == "short" && track.distanceM <= 10_000) || (distanceRange == "medium" && track.distanceM > 10_000 && track.distanceM <= 30_000) || (distanceRange == "long" && track.distanceM > 30_000 && track.distanceM <= 50_000) || (distanceRange == "ultra" && track.distanceM >= 50_000))
         }
         switch sortBy { case "distanceDesc": return result.sorted { $0.distanceM > $1.distanceM }; case "elevationDesc": return result.sorted { $0.elevationGainM > $1.elevationGainM }; default: return result.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) } }
+    }
+
+    func resetFilters() {
+        selectedTag = nil
+        selectedCity = nil
+        keyword = ""
+        distanceRange = "all"
+        sortBy = "newest"
+    }
+
+    private var trimmedKeyword: String {
+        keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var distanceRangeTitle: String {
+        switch distanceRange {
+        case "short": return "≤10 km"
+        case "medium": return "10–30 km"
+        case "long": return "30–50 km"
+        case "ultra": return "≥50 km"
+        default: return "全部距离"
+        }
+    }
+
+    private var sortTitle: String {
+        switch sortBy {
+        case "distanceDesc": return "距离最长"
+        case "elevationDesc": return "爬升最高"
+        default: return "最新发布"
+        }
     }
 
     func load(token: String? = nil, isRefresh: Bool = false) async {
@@ -93,8 +138,20 @@ struct ExploreView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showFilters = true } label: {
-                        Label("筛选", systemImage: "line.3.horizontal.decrease")
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "line.3.horizontal.decrease")
+                                .frame(width: 30, height: 30)
+                            if viewModel.sheetFilterCount > 0 {
+                                Text("\(viewModel.sheetFilterCount)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 16, height: 16)
+                                    .background(TrailBoxColor.danger, in: Circle())
+                            }
+                        }
+                        .frame(width: 34, height: 32)
                     }
+                    .accessibilityLabel(viewModel.sheetFilterCount > 0 ? "筛选，已启用 \(viewModel.sheetFilterCount) 项" : "筛选")
                     Button { openContribution() } label: {
                         Label("贡献", systemImage: "plus")
                             .font(.subheadline.weight(.semibold))
@@ -163,9 +220,49 @@ struct ExploreView: View {
                 .listRowSeparator(.hidden)
             }
 
+            if viewModel.hasActiveFilters {
+                Section {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("当前显示 \(viewModel.filteredTracks.count) 条匹配路线")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(TrailBoxColor.text)
+                            Text(viewModel.activeFilterSummary)
+                                .font(.caption)
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        Button("清除") { viewModel.resetFilters() }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(TrailBoxColor.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             if viewModel.filteredTracks.isEmpty {
                 Section {
-                    VStack(spacing: 8) { Image(systemName: "line.3.horizontal.decrease.circle").font(.title2).foregroundStyle(TrailBoxColor.secondaryText); Text("暂无匹配路线").font(.headline); Text("试试调整筛选条件").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) }
+                    VStack(spacing: 12) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .font(.title2)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                        Text("暂无匹配路线").font(.headline)
+                        Text("试试调整筛选条件").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText)
+                        if viewModel.hasActiveFilters {
+                            Button("清除全部筛选") { viewModel.resetFilters() }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                                .frame(minHeight: 44)
+                        }
+                    }
                         .frame(maxWidth: .infinity).padding(.top, 48)
                 }
                 .listRowInsets(EdgeInsets())
@@ -209,17 +306,23 @@ struct ExploreView: View {
             }
             Task { await savedRoutes.toggle(trackID: trackID, token: token) }
         } label: {
-            Image(systemName: savedRoutes.isSaved(trackID) ? "bookmark.fill" : "bookmark")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(savedRoutes.isSaved(trackID) ? TrailBoxColor.primaryDark : TrailBoxColor.text)
-                .frame(width: 40, height: 40)
+            Group {
+                if savedRoutes.savingTrackIDs.contains(trackID) {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: savedRoutes.isSaved(trackID) ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(savedRoutes.isSaved(trackID) ? TrailBoxColor.primaryDark : TrailBoxColor.text)
+                }
+            }
+            .frame(width: 44, height: 44)
         }
         .buttonStyle(.borderless)
         .trailBoxGlass(interactive: !savedRoutes.savingTrackIDs.contains(trackID), in: Circle())
         .contentShape(Circle())
         .zIndex(2)
         .disabled(savedRoutes.savingTrackIDs.contains(trackID))
-        .accessibilityLabel(savedRoutes.isSaved(trackID) ? "取消收藏路线" : "收藏路线")
+        .accessibilityLabel(savedRoutes.savingTrackIDs.contains(trackID) ? "正在更新收藏" : (savedRoutes.isSaved(trackID) ? "取消收藏路线" : "收藏路线"))
     }
 
     private func tagButton(_ title: String, tag: String?) -> some View {
@@ -236,7 +339,71 @@ struct ExploreView: View {
 private struct ExploreFilterSheet: View {
     @ObservedObject var viewModel: ExploreViewModel
     @Environment(\.dismiss) private var dismiss
-    var body: some View { NavigationStack { Form { Section("排序") { Picker("排序", selection: $viewModel.sortBy) { Text("最新发布").tag("newest"); Text("距离最长").tag("distanceDesc"); Text("爬升最高").tag("elevationDesc") } }; Section("城市") { Picker("城市", selection: $viewModel.selectedCity) { Text("全部城市").tag(String?.none); ForEach(viewModel.cities, id: \.self) { Text($0).tag(Optional($0)) } } }; Section("距离") { Picker("距离", selection: $viewModel.distanceRange) { Text("全部距离").tag("all"); Text("≤10 km").tag("short"); Text("10–30 km").tag("medium"); Text("30–50 km").tag("long"); Text("≥50 km").tag("ultra") } } }.navigationTitle("筛选与排序").toolbar { ToolbarItem(placement: .topBarLeading) { Button("重置") { viewModel.selectedCity = nil; viewModel.distanceRange = "all"; viewModel.sortBy = "newest" } }; ToolbarItem(placement: .topBarTrailing) { Button("确定") { dismiss() } } } } }
+    @State private var selectedCity: String?
+    @State private var distanceRange: String
+    @State private var sortBy: String
+
+    init(viewModel: ExploreViewModel) {
+        self.viewModel = viewModel
+        _selectedCity = State(initialValue: viewModel.selectedCity)
+        _distanceRange = State(initialValue: viewModel.distanceRange)
+        _sortBy = State(initialValue: viewModel.sortBy)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("排序") {
+                    Picker("排序", selection: $sortBy) {
+                        Text("最新发布").tag("newest")
+                        Text("距离最长").tag("distanceDesc")
+                        Text("爬升最高").tag("elevationDesc")
+                    }
+                }
+                Section("城市") {
+                    Picker("城市", selection: $selectedCity) {
+                        Text("全部城市").tag(String?.none)
+                        ForEach(viewModel.cities, id: \.self) { Text($0).tag(Optional($0)) }
+                    }
+                }
+                Section("距离") {
+                    Picker("距离", selection: $distanceRange) {
+                        Text("全部距离").tag("all")
+                        Text("≤10 km").tag("short")
+                        Text("10–30 km").tag("medium")
+                        Text("30–50 km").tag("long")
+                        Text("≥50 km").tag("ultra")
+                    }
+                }
+                Section {
+                    Button("恢复默认") {
+                        selectedCity = nil
+                        distanceRange = "all"
+                        sortBy = "newest"
+                    }
+                    .foregroundStyle(TrailBoxColor.danger)
+                } footer: {
+                    Text("关闭页面不会应用尚未确认的修改。")
+                }
+            }
+            .navigationTitle("筛选与排序")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("应用") {
+                        viewModel.selectedCity = selectedCity
+                        viewModel.distanceRange = distanceRange
+                        viewModel.sortBy = sortBy
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
 }
 
 struct TrackCard: View {
