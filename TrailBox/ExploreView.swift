@@ -775,6 +775,8 @@ struct TrackCard: View {
 
 struct RouteThumbnail: View {
     let points: [TrackPoint]
+    var reservesBottomOverlay = true
+
     var body: some View { Canvas { context, size in
         context.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(Gradient(colors: [TrailBoxColor.sand.opacity(0.9), TrailBoxColor.surfaceMuted, TrailBoxColor.moss.opacity(0.32)]), startPoint: .zero, endPoint: CGPoint(x: size.width, y: size.height)))
         for index in 0..<8 {
@@ -785,10 +787,10 @@ struct RouteThumbnail: View {
             context.stroke(contour, with: .color(TrailBoxColor.primaryDark.opacity(index.isMultiple(of: 3) ? 0.16 : 0.09)), lineWidth: index.isMultiple(of: 3) ? 1.2 : 0.8)
         }
         guard points.count > 1 else { return }
-        // Only the bottom title overlays the image; leave a small perimeter around the route elsewhere.
-        let horizontalPadding: CGFloat = 20
-        let topPadding: CGFloat = 16
-        let bottomPadding: CGFloat = 56
+        // Full route cards reserve space for their bottom title overlay. Compact previews do not.
+        let horizontalPadding: CGFloat = reservesBottomOverlay ? 20 : 14
+        let topPadding: CGFloat = reservesBottomOverlay ? 16 : 12
+        let bottomPadding: CGFloat = reservesBottomOverlay ? 56 : 12
         let drawableWidth = max(1, size.width - 2 * horizontalPadding)
         let drawableHeight = max(1, size.height - topPadding - bottomPadding)
 

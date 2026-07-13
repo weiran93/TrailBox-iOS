@@ -715,6 +715,9 @@ struct AIAnalysis: Codable, Equatable {
         let reason = section("为什么会这样")
         let recovery = section("恢复建议")
         let actionsText = section("下次怎么改")
+        let warningTitleAndContent = ["风险提示", "风险提醒", "注意"]
+            .map { ($0, section($0)) }
+            .first { !$0.1.isEmpty }
         let actions = actionsText.split(whereSeparator: { $0.isNewline }).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         cardSummary = core.isEmpty ? String(cleaned.prefix(70)) : String(core.prefix(70))
         detailAnalysis = DetailAnalysis(
@@ -722,7 +725,7 @@ struct AIAnalysis: Codable, Equatable {
             mainReason: TextSection(title: "为什么会这样", content: reason.isEmpty ? "本次建议由运动数据和你的体感共同生成。" : reason),
             nextActions: ActionSection(title: "下次怎么改", items: actions.isEmpty ? ["下次运动后继续补充体感，便于获得更具体的建议。"] : actions),
             recoveryAdvice: TextSection(title: "恢复建议", content: recovery.isEmpty ? "接下来1-2天根据身体感受安排轻松活动和恢复。" : recovery),
-            riskWarning: nil
+            riskWarning: warningTitleAndContent.map { TextSection(title: $0.0, content: $0.1) }
         )
     }
 }

@@ -84,8 +84,8 @@ struct RootView: View {
         Binding(
             get: { selectedTab },
             set: { tab in
-                if tab == .profile && !session.isAuthenticated {
-                    pendingTabAfterAuthentication = .profile
+                if (tab == .activity || tab == .profile) && !session.isAuthenticated {
+                    pendingTabAfterAuthentication = tab
                     showAuthentication = true
                     return
                 }

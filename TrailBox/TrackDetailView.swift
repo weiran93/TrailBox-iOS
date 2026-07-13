@@ -268,7 +268,7 @@ private struct RouteStartActionSheet: View {
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.horizontal, 18)
-            .padding(.top, 8)
+            .padding(.top, 24)
             .padding(.bottom, 24)
         }
         .background(TrailPageBackground())
@@ -464,8 +464,8 @@ struct TrackDetailView: View {
     @State private var shareFile: ActivityFile?
     @State private var actionError: String?
     @State private var aiAnalysis: AIAnalysis?
-    @State private var aiAnalysisRaw: String?
     @State private var isAnalyzing = false
+    @State private var revealedAISectionCount = Int.max
     @State private var isVoiceGestureActive = false
     @State private var capturedVoiceText = ""
     @State private var showFullscreenMap = false
@@ -1917,7 +1917,7 @@ struct TrackDetailView: View {
     }
 
     private func activityHero(_ track: Track) -> some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack(alignment: .topLeading) {
             LinearGradient(
                 colors: [TrailBoxColor.primaryDark, TrailBoxColor.primary, TrailBoxColor.moss],
                 startPoint: .topLeading,
@@ -1957,7 +1957,7 @@ struct TrackDetailView: View {
             }
             .padding(20)
         }
-        .frame(minHeight: 210)
+        .frame(minHeight: 182)
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.32), lineWidth: 0.8))
         .shadow(color: TrailBoxColor.primaryDark.opacity(0.18), radius: 18, y: 9)
@@ -1993,37 +1993,48 @@ struct TrackDetailView: View {
     }
 
     private func analysisCard(_ track: Track) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
+        let resolvedAnalysis = aiAnalysis ?? track.aiAnalysisText.map { AIAnalysis(legacyText: $0) }
+        return SectionCard {
+            VStack(alignment: .leading, spacing: 14) {
                 DetailSectionTitle(title: "AI 运动分析", systemImage: "sparkles")
                 if isAnalyzing {
-                    Text("分析中…").font(.headline.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 14).background(TrailBoxColor.primary).clipShape(RoundedRectangle(cornerRadius: 10))
-                    Divider()
                     PwaAIAnalysisProgress()
-                } else if let rawAnalysis = aiAnalysisRaw ?? track.aiAnalysisText {
+                        .transition(reduceMotion ? .identity : .opacity)
+                } else if let resolvedAnalysis {
                     if !capturedVoiceText.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("本次感受").font(.caption.weight(.bold)).foregroundStyle(TrailBoxColor.secondaryText)
-                            Text("“\(capturedVoiceText)”").font(.subheadline).foregroundStyle(TrailBoxColor.text).lineLimit(2)
-                            Text("已用于生成本次 AI 分析").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "waveform")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                                .frame(width: 32, height: 32)
+                                .background(TrailBoxColor.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("你说的体感")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(TrailBoxColor.secondaryText)
+                                Text(capturedVoiceText)
+                                    .font(.subheadline)
+                                    .foregroundStyle(TrailBoxColor.text)
+                                    .lineLimit(3)
+                            }
                         }
                         .padding(12)
-                        .background(TrailBoxColor.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    if let summary = aiAnalysis?.cardSummary, !summary.isEmpty {
-                        Text(summary)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(TrailBoxColor.text)
-                            .lineSpacing(3)
-                            .padding(12)
-                            .background(TrailBoxColor.primary.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    Divider()
-                    PwaAIAnalysisText(text: rawAnalysis)
+                    AIAnalysisResultView(
+                        analysis: resolvedAnalysis,
+                        revealedSectionCount: revealedAISectionCount
+                    )
                 } else {
-                    Text("说说这次感觉，AI 会结合数据给你更准确的建议。").font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("把数据变成下一次能执行的建议")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.text)
+                        Text("可以先说一句体感，也可以直接根据轨迹、爬升和运动数据生成复盘。")
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                            .lineSpacing(3)
+                    }
                     if !capturedVoiceText.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -2043,31 +2054,80 @@ struct TrackDetailView: View {
                                 .accessibilityLabel("删除本次语音录入")
                             }
                             Text(capturedVoiceText).font(.subheadline).foregroundStyle(TrailBoxColor.text).lineLimit(3)
-                        }.padding(12).background(TrailBoxColor.background).clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .padding(12)
+                        .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    Label(isVoiceGestureActive ? "松手结束录音" : capturedVoiceText.isEmpty ? "按住说说这次感受" : "按住重新说", systemImage: isVoiceGestureActive ? "waveform" : "mic.fill")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 56)
-                            .contentShape(RoundedRectangle(cornerRadius: 10))
-                            .trailBoxGlass(
-                                tint: isVoiceGestureActive ? .black : TrailBoxColor.primary,
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            )
-                            .gesture(voiceStartGesture())
-                    Button(capturedVoiceText.isEmpty ? "跳过体感，直接分析" : "开始 AI 分析") {
-                        analyze(track, feeling: ActivityFeeling(overallFeeling: nil, processTags: [], bodyTags: [], routeEnvTags: [], painDetails: [], voiceText: capturedVoiceText, textNote: ""))
+
+                    VStack(spacing: 9) {
+                        AIRecordingGlyph(isActive: isVoiceGestureActive)
+                        Text(isVoiceGestureActive ? "松手结束录音" : capturedVoiceText.isEmpty ? "按住说说这次感受" : "按住重新说")
+                            .font(.headline.weight(.bold))
+                        Text(isVoiceGestureActive ? "正在听你说…" : "一句话就够，例如：后半程腿很沉")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.75))
                     }
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(TrailBoxColor.primaryDark)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: 56)
+                    .frame(minHeight: 108)
+                    .background(
+                        LinearGradient(
+                            colors: isVoiceGestureActive
+                                ? [TrailBoxColor.primaryDark, .black.opacity(0.82)]
+                                : [TrailBoxColor.primaryDark, TrailBoxColor.primary],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(.white.opacity(0.24), lineWidth: 0.8)
+                    )
+                    .shadow(color: TrailBoxColor.primaryDark.opacity(0.16), radius: 12, y: 6)
+                    .scaleEffect(isVoiceGestureActive && !reduceMotion ? 0.985 : 1)
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isVoiceGestureActive)
+                    .gesture(voiceStartGesture())
+                    .accessibilityLabel(capturedVoiceText.isEmpty ? "按住说说这次感受" : "按住重新录入体感")
+                    .accessibilityHint("按住开始录音，松手结束")
+
+                    Button {
+                        analyze(track, feeling: ActivityFeeling(overallFeeling: nil, processTags: [], bodyTags: [], routeEnvTags: [], painDetails: [], voiceText: capturedVoiceText, textNote: ""))
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                                .frame(width: 36, height: 36)
+                                .background(TrailBoxColor.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(capturedVoiceText.isEmpty ? "直接分析这次记录" : "结合体感开始分析")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(TrailBoxColor.text)
+                                Text(capturedVoiceText.isEmpty ? "不补充体感，先根据运动数据生成" : "把刚才的感受一起交给 AI 判断")
+                                    .font(.caption)
+                                    .foregroundStyle(TrailBoxColor.secondaryText)
+                            }
+                            Spacer(minLength: 6)
+                            Image(systemName: "arrow.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 60)
+                        .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(TrailBoxColor.border, lineWidth: 0.75)
+                        )
+                    }
                     .buttonStyle(.plain)
-                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
-        }.padding(.horizontal, 16)
+        }
+        .padding(.horizontal, 16)
     }
     private func voiceStartGesture() -> some Gesture {
         DragGesture(minimumDistance: 0)
@@ -2204,9 +2264,43 @@ struct TrackDetailView: View {
     }
 
     private func analyze(_ track: Track, feeling: ActivityFeeling) {
-        guard let token = session.token else { return }
-        isAnalyzing = true
-        Task { do { let result: AIAnalysisResponse = try await APIClient.shared.request("/tracks/\(track.id)/ai-analysis", method: "POST", body: AIAnalysisRequest(userFeeling: feeling), token: token); aiAnalysis = result.analysis; aiAnalysisRaw = result.rawAnalysis } catch { actionError = error.localizedDescription }; isAnalyzing = false }
+        guard let token = session.token else {
+            session.requireAuthentication()
+            return
+        }
+        revealedAISectionCount = 0
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            isAnalyzing = true
+        }
+        Task {
+            do {
+                let result: AIAnalysisResponse = try await APIClient.shared.request(
+                    "/tracks/\(track.id)/ai-analysis",
+                    method: "POST",
+                    body: AIAnalysisRequest(userFeeling: feeling),
+                    token: token
+                )
+                aiAnalysis = result.analysis
+                revealedAISectionCount = reduceMotion ? Int.max : 1
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+                    isAnalyzing = false
+                }
+                guard !reduceMotion else { return }
+                for count in 2...5 {
+                    try? await Task.sleep(for: .milliseconds(140))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) {
+                        revealedAISectionCount = count
+                    }
+                }
+            } catch {
+                actionError = ErrorMessage.display(error)
+                revealedAISectionCount = Int.max
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    isAnalyzing = false
+                }
+            }
+        }
     }
 }
 
@@ -2289,85 +2383,348 @@ private struct ReportTrackView: View {
 }
 
 private struct PwaAIAnalysisProgress: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var stepIndex = 0
+    @State private var isPulsing = false
     private let steps = [
-        "读取这次运动的轨迹、心率、步频和坡度数据",
-        "整理爬升、下降、配速波动和停留片段",
-        "把关键训练信号交给 AI 教练判断",
-        "正在生成简短建议，请稍等片刻"
+        "正在读取轨迹、爬升和运动数据",
+        "正在判断这次运动的主要负荷",
+        "正在把体感和数据放在一起理解",
+        "正在整理成下一次可执行的建议"
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("正在分析，请稍等…").font(.subheadline.weight(.semibold))
-            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                HStack(spacing: 8) {
-                    Text(index < stepIndex ? "✓" : index == stepIndex ? "…" : "")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(TrailBoxColor.primary).frame(width: 20)
-                    Text(step).font(.caption).foregroundStyle(index <= stepIndex ? TrailBoxColor.text : TrailBoxColor.secondaryText)
-                }.frame(minHeight: 24)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(TrailBoxColor.primary.opacity(0.1))
+                        .frame(width: 48, height: 48)
+                        .scaleEffect(isPulsing && !reduceMotion ? 1.12 : 1)
+                    Circle()
+                        .stroke(TrailBoxColor.primary.opacity(0.22), lineWidth: 1)
+                        .frame(width: 48, height: 48)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("AI 正在复盘这次运动")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(TrailBoxColor.text)
+                    AIShimmerText(text: steps[stepIndex])
+                        .id(stepIndex)
+                        .transition(
+                            reduceMotion
+                                ? .identity
+                                : .asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                    removal: .opacity.combined(with: .move(edge: .top))
+                                )
+                        )
+                }
+            }
+
+            HStack(spacing: 6) {
+                ForEach(steps.indices, id: \.self) { index in
+                    Capsule()
+                        .fill(index <= stepIndex ? TrailBoxColor.primary : TrailBoxColor.border)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 4)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 11) {
+                ForEach(0..<3, id: \.self) { index in
+                    HStack(spacing: 10) {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(TrailBoxColor.primary.opacity(index == stepIndex % 3 ? 0.13 : 0.07))
+                            .frame(width: 32, height: 32)
+                        VStack(alignment: .leading, spacing: 6) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(TrailBoxColor.border.opacity(0.78))
+                                .frame(width: CGFloat(132 + index * 26), height: 9)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(TrailBoxColor.border.opacity(0.5))
+                                .frame(maxWidth: index == 1 ? 190 : 154)
+                                .frame(height: 8)
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            Text("分析完成后会按“结论、原因、行动、恢复”逐项呈现。")
+                .font(.caption2)
+                .foregroundStyle(TrailBoxColor.secondaryText)
+        }
+        .padding(14)
+        .background(TrailBoxColor.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(TrailBoxColor.primary.opacity(0.13), lineWidth: 0.8)
+        )
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                isPulsing = true
             }
         }
         .task {
             while !Task.isCancelled && stepIndex < steps.count - 1 {
-                try? await Task.sleep(for: .seconds(1.8))
+                try? await Task.sleep(for: .seconds(1.35))
                 guard !Task.isCancelled else { return }
-                stepIndex += 1
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                    stepIndex += 1
+                }
             }
         }
     }
 }
 
-private struct PwaAIAnalysisText: View {
+private struct AIShimmerText: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isSweeping = false
     let text: String
-    private var blocks: [(title: String?, content: String)] {
-        let pattern = #"【([^】]+)】"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [(nil, text)] }
-        let source = text.replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
-        guard !matches.isEmpty else { return [(nil, source)] }
-        var result: [(String?, String)] = []
-        for (index, match) in matches.enumerated() {
-            let title = Range(match.range(at: 1), in: source).map { String(source[$0]) }
-            let contentStart = match.range.location + match.range.length
-            let contentEnd = index + 1 < matches.count ? matches[index + 1].range.location : (source as NSString).length
-            let range = NSRange(location: contentStart, length: max(0, contentEnd - contentStart))
-            let content = (source as NSString).substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
-            result.append((title, content))
-        }
-        return result
-    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-                VStack(alignment: .leading, spacing: 8) {
-                    if let title = block.title {
-                        Text("【\(title)】").font(.system(.headline, design: .rounded, weight: .bold)).foregroundStyle(TrailBoxColor.text)
-                    }
-                    contentView(for: block)
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(TrailBoxColor.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.76)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay {
+                LinearGradient(
+                    colors: [.clear, TrailBoxColor.primaryDark, .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .offset(x: isSweeping ? 220 : -220)
+                .mask {
+                    Text(text)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                if index < blocks.count - 1 { Divider().overlay(TrailBoxColor.border) }
+            }
+            .clipped()
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 1.8).repeatForever(autoreverses: false)) {
+                    isSweeping = true
+                }
+            }
+    }
+}
+
+private struct AIRecordingGlyph: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isAnimating = false
+    let isActive: Bool
+
+    private let restingHeights: [CGFloat] = [10, 18, 12, 20]
+    private let activeHeights: [CGFloat] = [20, 11, 22, 14]
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.white.opacity(0.14))
+                .frame(width: 48, height: 48)
+                .scaleEffect(isActive && isAnimating && !reduceMotion ? 1.13 : 1)
+
+            if isActive {
+                HStack(alignment: .center, spacing: 3) {
+                    ForEach(restingHeights.indices, id: \.self) { index in
+                        Capsule()
+                            .fill(.white)
+                            .frame(
+                                width: 3,
+                                height: isAnimating && !reduceMotion ? activeHeights[index] : restingHeights[index]
+                            )
+                            .animation(
+                                reduceMotion
+                                    ? nil
+                                    : .easeInOut(duration: 0.48)
+                                        .repeatForever(autoreverses: true)
+                                        .delay(Double(index) * 0.07),
+                                value: isAnimating
+                            )
+                    }
+                }
+            } else {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .onAppear { updateAnimation(for: isActive) }
+        .onChange(of: isActive) { updateAnimation(for: $0) }
+    }
+
+    private func updateAnimation(for active: Bool) {
+        isAnimating = false
+        guard active, !reduceMotion else { return }
+        DispatchQueue.main.async {
+            isAnimating = true
+        }
+    }
+}
+
+private struct AIAnalysisResultView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let analysis: AIAnalysis
+    let revealedSectionCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if revealedSectionCount > 0 {
+                summaryCard
+                    .transition(revealTransition)
+            }
+            if revealedSectionCount > 1 {
+                textSection(
+                    analysis.detailAnalysis.mainReason,
+                    systemImage: "waveform.path.ecg",
+                    tint: TrailBoxColor.sky
+                )
+                .transition(revealTransition)
+            }
+            if revealedSectionCount > 2 {
+                actionSection
+                    .transition(revealTransition)
+            }
+            if revealedSectionCount > 3 {
+                textSection(
+                    analysis.detailAnalysis.recoveryAdvice,
+                    systemImage: "heart.text.square.fill",
+                    tint: TrailBoxColor.moss
+                )
+                .transition(revealTransition)
+            }
+            if revealedSectionCount > 4, let warning = analysis.detailAnalysis.riskWarning {
+                textSection(
+                    warning,
+                    systemImage: "exclamationmark.triangle.fill",
+                    tint: TrailBoxColor.warning
+                )
+                .transition(revealTransition)
             }
         }
     }
 
-    @ViewBuilder private func contentView(for block: (title: String?, content: String)) -> some View {
-        if let title = block.title, title.contains("改进") || title.contains("怎么改") {
-            let items = block.content.split(whereSeparator: { $0.isNewline }).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    HStack(alignment: .top, spacing: 9) {
-                        Text("\(index + 1)").font(.caption.weight(.bold)).foregroundStyle(.white).frame(width: 20, height: 20).background(TrailBoxColor.primary).clipShape(Circle())
-                        Text(item.replacingOccurrences(of: #"^\d+[\.、]\s*"#, with: "", options: .regularExpression)).font(.subheadline).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label("本次结论", systemImage: "scope")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(TrailBoxColor.primaryDark)
+            Text(analysis.cardSummary.isEmpty ? analysis.detailAnalysis.coreJudgment.content : analysis.cardSummary)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(TrailBoxColor.text)
+                .lineSpacing(5)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [TrailBoxColor.primary.opacity(0.12), TrailBoxColor.sand.opacity(0.38)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(TrailBoxColor.primary.opacity(0.16), lineWidth: 0.8)
+        )
+    }
+
+    private var actionSection: some View {
+        analysisBlock(
+            title: analysis.detailAnalysis.nextActions.title,
+            systemImage: "checklist",
+            tint: TrailBoxColor.primaryDark
+        ) {
+            VStack(alignment: .leading, spacing: 11) {
+                ForEach(Array(analysis.detailAnalysis.nextActions.items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\(index + 1)")
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(TrailBoxColor.primaryDark, in: Circle())
+                        Text(cleanedAction(item))
+                            .font(.subheadline)
+                            .foregroundStyle(TrailBoxColor.text)
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
-        } else if let title = block.title, title == "注意" || title.contains("风险") {
-            Text(block.content).font(.subheadline).lineSpacing(4).fixedSize(horizontal: false, vertical: true).padding(12).background(Color.orange.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 10))
-        } else {
-            Text(block.content).font(.subheadline).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func textSection(
+        _ section: AIAnalysis.TextSection,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        analysisBlock(title: section.title, systemImage: systemImage, tint: tint) {
+            Text(section.content)
+                .font(.subheadline)
+                .foregroundStyle(TrailBoxColor.text)
+                .lineSpacing(5)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func analysisBlock<Content: View>(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 9) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(TrailBoxColor.text)
+            }
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(TrailBoxColor.border, lineWidth: 0.7)
+        )
+    }
+
+    private var revealTransition: AnyTransition {
+        reduceMotion
+            ? .identity
+            : .asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .bottom)),
+                removal: .opacity
+            )
+    }
+
+    private func cleanedAction(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: #"^\s*\d+[\.、]\s*"#,
+            with: "",
+            options: .regularExpression
+        )
     }
 }
 

@@ -314,7 +314,7 @@ struct ProfileView: View {
             } label: {
                 SectionCard {
                     HStack(spacing: 14) {
-                        RouteThumbnail(points: track.points)
+                        RouteThumbnail(points: track.points, reservesBottomOverlay: false)
                             .frame(width: 104, height: 78)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
@@ -387,7 +387,7 @@ struct ProfileView: View {
                 } label: {
                     SectionCard {
                         HStack(spacing: 14) {
-                            RouteThumbnail(points: track.points)
+                            RouteThumbnail(points: track.points, reservesBottomOverlay: false)
                                 .frame(width: 104, height: 78)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
