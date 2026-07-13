@@ -46,7 +46,7 @@ struct ProfileView: View {
                     loginPrompt
                 }
             }
-            .background(TrailBoxColor.background)
+            .background(TrailPageBackground())
             .navigationTitle("我的")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -119,8 +119,6 @@ struct ProfileView: View {
                 userHeader
                     .padding(.top, 4)
 
-                profileStats
-
                 profileSection(title: "收藏路线", actionTitle: savedRoutes.tracks.isEmpty ? nil : "查看全部") {
                     savedRoutesPreview
                 } action: {
@@ -181,51 +179,74 @@ struct ProfileView: View {
     }
 
     private var userHeader: some View {
-        HStack(spacing: 16) {
-            Text(userInitial)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(width: 62, height: 62)
-                .background(TrailBoxColor.primaryDark, in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.65), lineWidth: 2))
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text(session.user?.nickname ?? session.user?.username ?? "小野box 用户")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(TrailBoxColor.text)
-
-                HStack(spacing: 8) {
-                    Text("ID \(session.user?.publicID ?? "-")")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(TrailBoxColor.secondaryText)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(TrailBoxColor.surface.opacity(0.8), in: Capsule())
-
-                    Label(itraViewModel.profile == nil ? "完善档案" : "ITRA 已绑定", systemImage: itraViewModel.profile == nil ? "person.badge.plus" : "checkmark.seal.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(TrailBoxColor.primaryDark)
+        ZStack {
+            LinearGradient(
+                colors: [TrailBoxColor.primaryDark, TrailBoxColor.primary, TrailBoxColor.moss],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Canvas { context, size in
+                for index in 0..<5 {
+                    let y = CGFloat(20 + index * 38)
+                    var contour = Path()
+                    contour.move(to: CGPoint(x: -24, y: y))
+                    contour.addCurve(
+                        to: CGPoint(x: size.width + 24, y: y + 6),
+                        control1: CGPoint(x: size.width * 0.3, y: y - 28),
+                        control2: CGPoint(x: size.width * 0.72, y: y + 30)
+                    )
+                    context.stroke(contour, with: .color(.white.opacity(0.08)), lineWidth: 1)
                 }
             }
+            .allowsHitTesting(false)
 
-            Spacer(minLength: 0)
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(TrailBoxColor.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TrailBoxColor.primary.opacity(0.18), lineWidth: 0.75))
-    }
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 15) {
+                    Text(userInitial)
+                        .font(.system(size: 25, weight: .heavy, design: .rounded))
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                        .frame(width: 64, height: 64)
+                        .background(TrailBoxColor.sand, in: Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.7), lineWidth: 2))
 
-    private var profileStats: some View {
-        SectionCard {
-            HStack(spacing: 0) {
-                profileMetric("\(contributionViewModel.tracks.count)", label: "贡献路线")
-                Divider().frame(height: 38)
-                profileMetric(compactDistance, label: "公开里程")
-                Divider().frame(height: 38)
-                profileMetric(itraViewModel.profile?.performanceIndex.map(String.init) ?? "—", label: "ITRA 分数")
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(session.user?.nickname ?? session.user?.username ?? "小野box 用户")
+                            .font(.system(size: 24, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+
+                        HStack(spacing: 8) {
+                            Text("ID \(session.user?.publicID ?? "-")")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(1)
+
+                            Label(itraViewModel.profile == nil ? "完善 ITRA" : "ITRA 已绑定", systemImage: itraViewModel.profile == nil ? "person.badge.plus" : "checkmark.seal.fill")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .background(.black.opacity(0.16), in: Capsule())
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 0) {
+                    profileHeroMetric("\(savedRoutes.tracks.count)", label: "收藏路线")
+                    profileHeroMetric("\(contributionViewModel.tracks.count)", label: "贡献路线")
+                    profileHeroMetric(itraViewModel.profile?.performanceIndex.map(String.init) ?? "—", label: "ITRA 分数")
+                }
+                .padding(.vertical, 12)
+                .background(.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             }
+            .padding(20)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.3), lineWidth: 0.8))
+        .shadow(color: TrailBoxColor.primaryDark.opacity(0.18), radius: 18, y: 9)
     }
 
     @ViewBuilder
@@ -236,15 +257,18 @@ struct ProfileView: View {
             } label: {
                 SectionCard {
                     HStack(spacing: 14) {
-                        Image(systemName: "bookmark.fill")
-                            .font(.title2)
-                            .foregroundStyle(TrailBoxColor.primaryDark)
-                            .frame(width: 48, height: 48)
-                            .background(TrailBoxColor.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        RouteThumbnail(points: track.points)
+                            .frame(width: 104, height: 78)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
                         VStack(alignment: .leading, spacing: 5) {
                             Text(track.name).font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.text).lineLimit(1)
                             Text("已收藏 \(savedRoutes.tracks.count) 条 · \(DisplayFormat.distance(track.distanceM))")
                                 .font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                            Label(track.city ?? "路线详情", systemImage: "mappin.and.ellipse")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(TrailBoxColor.stone)
+                                .lineLimit(1)
                         }
                         Spacer()
                         Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(TrailBoxColor.secondaryText)
@@ -306,16 +330,18 @@ struct ProfileView: View {
                 } label: {
                     SectionCard {
                         HStack(spacing: 14) {
-                            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                                .font(.title2)
-                                .foregroundStyle(TrailBoxColor.primaryDark)
-                                .frame(width: 48, height: 48)
-                                .background(TrailBoxColor.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            RouteThumbnail(points: track.points)
+                                .frame(width: 104, height: 78)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
 
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(track.name).font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.text).lineLimit(1)
                                 Text([track.city, DisplayFormat.distance(track.distanceM)].compactMap { $0 }.joined(separator: " · "))
                                     .font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                                Label("最近贡献", systemImage: "leaf.fill")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(TrailBoxColor.primaryDark)
                             }
 
                             Spacer()
@@ -349,10 +375,10 @@ struct ProfileView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func profileMetric(_ value: String, label: String) -> some View {
+    private func profileHeroMetric(_ value: String, label: String) -> some View {
         VStack(spacing: 5) {
-            Text(value).font(.title3.weight(.bold)).foregroundStyle(TrailBoxColor.text).lineLimit(1).minimumScaleFactor(0.75)
-            Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+            Text(value).font(.title3.weight(.heavy)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.68)
+            Text(label).font(.caption2.weight(.medium)).foregroundStyle(.white.opacity(0.68))
         }
         .frame(maxWidth: .infinity)
     }
@@ -360,12 +386,6 @@ struct ProfileView: View {
     private var userInitial: String {
         let name = session.user?.nickname ?? session.user?.username ?? "小"
         return String(name.prefix(1)).uppercased()
-    }
-
-    private var compactDistance: String {
-        let kilometers = contributionViewModel.tracks.reduce(0) { $0 + $1.distanceM } / 1_000
-        if kilometers >= 100 { return String(format: "%.0f km", kilometers) }
-        return String(format: "%.1f km", kilometers)
     }
 
     private var latestContribution: Track? {

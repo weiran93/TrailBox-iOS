@@ -318,24 +318,91 @@ struct TrackCard: View {
     }
 
     private var activityCard: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(track.name).font(.headline).foregroundStyle(TrailBoxColor.text).lineLimit(2)
-                        Text(activityDateAndSport).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+        VStack(spacing: 0) {
+            ZStack {
+                RouteThumbnail(points: track.points)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 126)
+                LinearGradient(colors: [.black.opacity(0.08), .clear, .black.opacity(0.72)], startPoint: .top, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text(track.isPublic ? "公开记录" : "私人记录")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.48), in: Capsule())
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.85))
                     }
                     Spacer()
-                    Text(track.isPublic ? "公开" : "私有").font(.caption.weight(.semibold)).foregroundStyle(track.isPublic ? TrailBoxColor.primaryDark : TrailBoxColor.secondaryText).padding(.horizontal, 8).padding(.vertical, 4).background(track.isPublic ? TrailBoxColor.primary.opacity(0.12) : TrailBoxColor.secondaryText.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(track.name)
+                            .font(.system(size: 19, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                        Text(activityMetadata)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.78))
+                            .lineLimit(1)
+                    }
                 }
-                Divider().padding(.vertical, 12)
-                HStack { activityStat(DisplayFormat.distance(track.distanceM), "距离"); activityStat(durationText, "用时"); activityStat(DisplayFormat.elevation(track.elevationGainM), "爬升") }
-                if let analysis = track.aiAnalysisText, !analysis.isEmpty { Button { aiExpanded.toggle() } label: { VStack(alignment: .leading, spacing: 6) { HStack { Text("AI 分析结论").font(.caption.weight(.bold)).foregroundStyle(TrailBoxColor.primaryDark); Spacer(); Text(aiExpanded ? "收起" : "展开").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }; if aiExpanded { Text(coreAnalysis(analysis)).font(.caption).foregroundStyle(TrailBoxColor.text).fixedSize(horizontal: false, vertical: true) } }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(TrailBoxColor.primary.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 10).stroke(TrailBoxColor.primary.opacity(0.16))).clipShape(RoundedRectangle(cornerRadius: 10)).padding(.top, 10) }.buttonStyle(.plain) } else { Text("AI 分析").font(.caption.weight(.semibold)).foregroundStyle(TrailBoxColor.secondaryText).padding(.horizontal, 12).padding(.vertical, 7).overlay(RoundedRectangle(cornerRadius: 9).stroke(TrailBoxColor.border)).padding(.top, 10) }
+                .padding(14)
             }
+
+            VStack(alignment: .leading, spacing: 11) {
+                HStack(spacing: 0) {
+                    activityStat(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
+                    activityStat(durationText, "用时", TrailBoxColor.sky)
+                    activityStat(DisplayFormat.elevation(track.elevationGainM), "累计爬升", TrailBoxColor.primaryDark)
+                }
+                .padding(.vertical, 11)
+                .background(TrailBoxColor.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                if let analysis = track.aiAnalysisText, !analysis.isEmpty {
+                    Button { aiExpanded.toggle() } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "sparkles")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("AI 运动复盘").font(.caption.weight(.bold)).foregroundStyle(TrailBoxColor.primaryDark)
+                                    Spacer()
+                                    Image(systemName: aiExpanded ? "chevron.up" : "chevron.down")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(TrailBoxColor.secondaryText)
+                                }
+                                if aiExpanded {
+                                    Text(coreAnalysis(analysis))
+                                        .font(.caption)
+                                        .foregroundStyle(TrailBoxColor.text)
+                                        .lineLimit(3)
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(TrailBoxColor.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Label("进入详情生成 AI 运动复盘", systemImage: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+            }
+            .padding(14)
         }
+        .background(TrailBoxColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TrailBoxColor.border, lineWidth: 0.75))
+        .shadow(color: TrailBoxColor.primaryDark.opacity(0.09), radius: 14, y: 7)
     }
 
-    private func activityStat(_ value: String, _ label: String) -> some View { VStack(spacing: 4) { Text(value).font(.title3).foregroundStyle(TrailBoxColor.text); Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }.frame(maxWidth: .infinity) }
+    private func activityStat(_ value: String, _ label: String, _ color: Color) -> some View { VStack(spacing: 4) { Text(value).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.7); Text(label).font(.caption2.weight(.medium)).foregroundStyle(TrailBoxColor.secondaryText) }.frame(maxWidth: .infinity) }
 
     private func exploreStat(_ value: String, _ label: String, _ color: Color) -> some View { VStack(spacing: 4) { Text(value).font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.72); Text(label).font(.caption2.weight(.medium)).foregroundStyle(TrailBoxColor.secondaryText) }.frame(maxWidth: .infinity) }
     private func compactElevation(_ value: Double) -> String { value >= 1000 ? String(format: "%.2fk", value / 1000) : String(format: "%.0f", value) }
@@ -374,6 +441,7 @@ struct TrackCard: View {
         return "贡献者 " + (track.contributorName ?? track.contributorPublicID ?? "小野box 用户")
     }
     private var activityDateAndSport: String { subtitle + (track.sport.map { " · \($0)" } ?? "") }
+    private var activityMetadata: String { [activityDateAndSport, track.city].compactMap { value in value?.isEmpty == false ? value : nil }.joined(separator: " · ") }
     private var durationText: String { guard let seconds = track.durationSec, seconds > 0 else { return "-" }; return String(format: "%d:%02d", Int(seconds) / 3600, (Int(seconds) % 3600) / 60) }
     private func coreAnalysis(_ text: String) -> String { let sections = text.components(separatedBy: "【核心判断】"); let body = sections.count > 1 ? sections[1].components(separatedBy: "【").first ?? text : text; return body.replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
 }

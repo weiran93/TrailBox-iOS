@@ -137,7 +137,7 @@ struct MyTracksView: View {
                     }
                 }
             }
-            .background(TrailBoxColor.background)
+            .background(TrailPageBackground())
             .navigationTitle("运动记录")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -177,20 +177,82 @@ struct MyTracksView: View {
 
     private var summary: some View {
         let statTracks = filteredForStatistics
-        return SectionCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack { VStack(alignment: .leading, spacing: 2) { Text("训练统计").font(.headline); Text(statsRange == .month ? "本自然月" : "全部记录").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }; Spacer(); Picker("统计范围", selection: $statsRange) { ForEach(StatsRange.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented).frame(width: 130) }
-                HStack(spacing: 0) {
-                metric("\(statTracks.count)", "记录")
-                Spacer()
-                metric(DisplayFormat.distance(statTracks.reduce(0) { $0 + $1.distanceM }), "总距离")
-                Spacer()
-                metric(totalDuration(statTracks), "总用时")
-                Spacer()
-                metric(DisplayFormat.elevation(statTracks.reduce(0) { $0 + $1.elevationGainM }), "累计爬升")
+        let distance = statTracks.reduce(0) { $0 + $1.distanceM }
+        let elevation = statTracks.reduce(0) { $0 + $1.elevationGainM }
+        return ZStack {
+            LinearGradient(
+                colors: [TrailBoxColor.primaryDark, TrailBoxColor.primary, TrailBoxColor.moss],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Canvas { context, size in
+                for index in 0..<5 {
+                    var contour = Path()
+                    let baseY = size.height * CGFloat(0.24 + Double(index) * 0.18)
+                    contour.move(to: CGPoint(x: -20, y: baseY))
+                    contour.addCurve(
+                        to: CGPoint(x: size.width + 20, y: baseY - 8),
+                        control1: CGPoint(x: size.width * 0.28, y: baseY - 34),
+                        control2: CGPoint(x: size.width * 0.7, y: baseY + 28)
+                    )
+                    context.stroke(contour, with: .color(.white.opacity(0.09)), lineWidth: 1)
                 }
             }
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("训练总览", systemImage: "figure.run.circle.fill")
+                            .font(.headline)
+                        Text(statsRange == .month ? "本自然月的运动积累" : "全部运动记录")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    Spacer()
+                    HStack(spacing: 2) {
+                        ForEach(StatsRange.allCases) { range in
+                            Button {
+                                withAnimation(.easeOut(duration: 0.18)) { statsRange = range }
+                            } label: {
+                                Text(range.rawValue)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 7)
+                                    .background(statsRange == range ? .white.opacity(0.22) : .clear, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(3)
+                    .background(.black.opacity(0.16), in: Capsule())
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(DisplayFormat.distance(distance))
+                        .font(.system(size: 36, weight: .heavy, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Text("累计里程")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+
+                HStack(spacing: 0) {
+                    summaryMetric("\(statTracks.count)", "记录", systemImage: "checkmark.circle.fill")
+                    summaryMetric(totalDuration(statTracks), "总用时", systemImage: "clock.fill")
+                    summaryMetric(DisplayFormat.elevation(elevation), "累计爬升", systemImage: "mountain.2.fill")
+                }
+                .padding(.vertical, 12)
+                .background(.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            }
+            .padding(20)
+            .foregroundStyle(.white)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.3), lineWidth: 0.8))
+        .shadow(color: TrailBoxColor.primaryDark.opacity(0.18), radius: 18, y: 9)
     }
 
     private var filteredForStatistics: [Track] {
@@ -199,7 +261,18 @@ struct MyTracksView: View {
         return viewModel.tracks.filter { track in guard let date = track.startTime ?? track.createdAt else { return false }; return calendar.isDate(date, equalTo: Date(), toGranularity: .month) }
     }
     private func totalDuration(_ tracks: [Track]) -> String { let seconds = Int(tracks.reduce(0) { $0 + ($1.durationSec ?? 0) }); guard seconds > 0 else { return "-" }; return seconds >= 3600 ? "\(seconds / 3600)h \((seconds % 3600) / 60)m" : "\(seconds / 60)m" }
-    private func metric(_ value: String, _ label: String) -> some View { VStack(alignment: .leading) { Text(value).font(.headline); Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText) } }
+    private func summaryMetric(_ value: String, _ label: String, systemImage: String) -> some View {
+        VStack(spacing: 5) {
+            Label(value, systemImage: systemImage)
+                .font(.subheadline.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.white.opacity(0.68))
+        }
+        .frame(maxWidth: .infinity)
+    }
     private func refreshTracks() async {
         guard let token = session.token else { return }
         await viewModel.load(token: token, isRefresh: true)

@@ -22,7 +22,7 @@
 - `SessionStore`、`DeepLinkRouter`、`SavedRoutesStore` 在 app 入口注入为 environment object。
 - 根导航使用系统 `TabView`；iOS 26 自动采用 Liquid Glass Tab Bar，iOS 16–25 保持对应系统原生样式。详情页隐藏底栏，探索、运动记录和「我的」三个根页面按导航路径显式恢复底栏可见，避免返回后继承隐藏状态。
 - `TrailBox/DesignSystem.swift` 提供统一的 `trailBoxGlass(...)` 修饰器和 `FloatingActionBar`：iOS 26 使用原生 `glassEffect`，iOS 16–25 使用系统 Material 回退；玻璃效果优先用于导航和悬浮操作层，内容卡片保持实体表面，页面底部主操作复用公共操作栏布局。
-- 当前视觉语言为「山野地图 + Liquid Glass」：基础色使用森林绿、苔藓绿与暖米色，页面背景可使用低对比度等高线纹理；玻璃效果不覆盖主要内容卡片，路线数据和长文本继续使用高对比度实体表面。探索卡片以轨迹图、路线负荷和距离/累计爬升/爬升密度组成决策层级；公开路线详情首屏将地图、名称和位置合并为 Hero，并紧接四项路线概览。
+- 当前视觉语言为「山野地图 + Liquid Glass」：基础色使用森林绿、苔藓绿与暖米色，页面背景可使用低对比度等高线纹理；玻璃效果不覆盖主要内容卡片，路线数据和长文本继续使用高对比度实体表面。探索卡片以轨迹图、路线负荷和距离/累计爬升/爬升密度组成决策层级；公开路线详情首屏将地图、名称和位置合并为 Hero，并紧接四项路线概览。运动记录根页使用训练总览 Hero 和轨迹记录卡片；「我的」根页在个人 Hero 中汇总收藏、贡献和 ITRA，并在收藏与贡献预览中直接展示轨迹。
 - 「我的记录」顶部包含 ITRA 资料入口。未绑定时展示查询 banner；已绑定时展示 ITRA 基础资料，并可进入 App 内 ITRA 详情页。
 - 「探索路线」顶部新增「贡献路线」入口，普通用户可上传轨迹并公开贡献到社区；对应页面为 `TrailBox/ContributeRouteView.swift`，后端 `Track` 模型新增 `recommendation_reason`（推荐理由）字段。
 - 登录用户可在探索列表和公开路线详情收藏/取消收藏路线；`TrailBox/SavedRoutesStore.swift` 维护跨页面的收藏状态，「我的」页提供收藏预览和完整列表。后端复用私有路线盒子，提供 `GET /boxes/want-to-run`、`PUT /boxes/want-to-run/tracks/{track_id}`、`DELETE /boxes/want-to-run/tracks/{track_id}`。
