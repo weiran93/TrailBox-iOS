@@ -500,7 +500,6 @@ struct TrackDetailView: View {
         .background(TrailPageBackground())
         .navigationTitle(isPublicSource ? "轨迹详情" : "记录详情")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
         .task(id: session.token) { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) }
         .task(id: "\(trackID)-\(session.token ?? "guest")") {
             if isPublicSource {
@@ -2585,7 +2584,7 @@ private struct AIAnalysisResultView: View {
                 summaryCard
                     .transition(revealTransition)
             }
-            if revealedSectionCount > 1 {
+            if revealedSectionCount > 1, !analysis.detailAnalysis.mainReason.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 textSection(
                     analysis.detailAnalysis.mainReason,
                     systemImage: "waveform.path.ecg",
@@ -2593,14 +2592,14 @@ private struct AIAnalysisResultView: View {
                 )
                 .transition(revealTransition)
             }
-            if revealedSectionCount > 2 {
+            if revealedSectionCount > 2, !analysis.detailAnalysis.nextActions.items.isEmpty {
                 actionSection
                     .transition(revealTransition)
             }
-            if revealedSectionCount > 3 {
+            if revealedSectionCount > 3, !analysis.detailAnalysis.recoveryAdvice.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 textSection(
                     analysis.detailAnalysis.recoveryAdvice,
-                    systemImage: "heart.text.square.fill",
+                    systemImage: analysis.detailAnalysis.recoveryAdvice.title == "下次重点看" ? "eye.fill" : "heart.text.square.fill",
                     tint: TrailBoxColor.moss
                 )
                 .transition(revealTransition)
@@ -2617,11 +2616,13 @@ private struct AIAnalysisResultView: View {
     }
 
     private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        let fullConclusion = analysis.detailAnalysis.coreJudgment.content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: 9) {
             Label("本次结论", systemImage: "scope")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(TrailBoxColor.primaryDark)
-            Text(analysis.cardSummary.isEmpty ? analysis.detailAnalysis.coreJudgment.content : analysis.cardSummary)
+            Text(fullConclusion.isEmpty ? analysis.cardSummary : fullConclusion)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(TrailBoxColor.text)
                 .lineSpacing(5)

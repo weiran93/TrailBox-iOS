@@ -705,27 +705,33 @@ struct AIAnalysis: Codable, Equatable {
 
     init(legacyText: String) {
         let cleaned = legacyText.replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        func section(_ title: String) -> String {
-            let markers = ["【\(title)】", title]
-            guard let marker = markers.first(where: { cleaned.range(of: $0) != nil }), let range = cleaned.range(of: marker) else { return "" }
+        func section(_ titles: [String]) -> (title: String, content: String)? {
+            guard let title = titles.first(where: { cleaned.range(of: "【\($0)】") != nil }),
+                  let range = cleaned.range(of: "【\(title)】") else { return nil }
             let remainder = String(cleaned[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            return remainder.components(separatedBy: "【").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? remainder
+            let content = remainder.components(separatedBy: "【").first?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? remainder
+            return content.isEmpty ? nil : (title, content)
         }
-        let core = section("核心判断")
-        let reason = section("为什么会这样")
-        let recovery = section("恢复建议")
-        let actionsText = section("下次怎么改")
+        let coreSection = section(["核心判断", "本次结论", "结论"])
+        let reasonSection = section(["为什么会这样", "原因分析", "数据解读"])
+        let recoverySection = section(["恢复建议", "下次重点看"])
+        let actionsSection = section(["下次怎么改", "改进建议", "训练建议"])
         let warningTitleAndContent = ["风险提示", "风险提醒", "注意"]
-            .map { ($0, section($0)) }
-            .first { !$0.1.isEmpty }
-        let actions = actionsText.split(whereSeparator: { $0.isNewline }).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        cardSummary = core.isEmpty ? String(cleaned.prefix(70)) : String(core.prefix(70))
+            .compactMap { section([$0]) }
+            .first
+        let core = coreSection?.content ?? cleaned
+        let actions = actionsSection?.content
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+        cardSummary = String(core.prefix(70))
         detailAnalysis = DetailAnalysis(
-            coreJudgment: TextSection(title: "核心判断", content: core.isEmpty ? String(cleaned.prefix(120)) : core),
-            mainReason: TextSection(title: "为什么会这样", content: reason.isEmpty ? "本次建议由运动数据和你的体感共同生成。" : reason),
-            nextActions: ActionSection(title: "下次怎么改", items: actions.isEmpty ? ["下次运动后继续补充体感，便于获得更具体的建议。"] : actions),
-            recoveryAdvice: TextSection(title: "恢复建议", content: recovery.isEmpty ? "接下来1-2天根据身体感受安排轻松活动和恢复。" : recovery),
-            riskWarning: warningTitleAndContent.map { TextSection(title: $0.0, content: $0.1) }
+            coreJudgment: TextSection(title: coreSection?.title ?? "核心判断", content: core),
+            mainReason: TextSection(title: reasonSection?.title ?? "为什么会这样", content: reasonSection?.content ?? ""),
+            nextActions: ActionSection(title: actionsSection?.title ?? "下次怎么改", items: actions),
+            recoveryAdvice: TextSection(title: recoverySection?.title ?? "恢复建议", content: recoverySection?.content ?? ""),
+            riskWarning: warningTitleAndContent.map { TextSection(title: $0.title, content: $0.content) }
         )
     }
 }

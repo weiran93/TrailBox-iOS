@@ -1884,7 +1884,6 @@ struct UploadTrackView: View {
             if isUploading { uploadingOverlay }
         }
         .background(TrailBoxColor.background)
-        .toolbar(.hidden, for: .tabBar)
     }
 
     private func upload() {
