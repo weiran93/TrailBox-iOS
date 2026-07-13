@@ -15,7 +15,7 @@
 
 - App 显示名：`小野box`。
 - Bundle ID：`com.trailbox.ios`。
-- 版本：`MARKETING_VERSION = 0.1.4`，`CURRENT_PROJECT_VERSION = 6`（本轮发布目标）。
+- 版本：`MARKETING_VERSION = 0.1.4`，`CURRENT_PROJECT_VERSION = 6`；已上传并提交 App Store 审核。
 - 最低系统：iOS 16.0。
 - 设备：仅 iPhone，`TARGETED_DEVICE_FAMILY = 1`。
 - 生命周期：纯 SwiftUI App，入口为 `TrailBox/TrailBoxApp.swift`。
@@ -106,4 +106,4 @@ npm run agent:cli -- requirement update <requirement-id> \
 
 - `privacy.html` 当前在仓库根目录但未跟踪；除非用户明确要求，不要自动加入 iOS 仓库。
 - `AGENTS.md` 仍包含大量知识库和发布历史，后续如要瘦身，应先给出迁移/拆分计划并等待确认。
-- 关联后端仓库已在本地修复公开 GPX 导出触发 SQLAlchemy 异步懒加载而返回 500 的问题，并新增回归测试；`runfast.fun` 尚未部署该修复，生产 GPX 导出需在明确发布后才能恢复。
+- 关联后端仓库已修复公开 GPX 导出触发 SQLAlchemy 异步懒加载而返回 500 的问题，并新增回归测试；修复已部署到 `runfast.fun`，公开 GPX 导出已通过生产接口验证。

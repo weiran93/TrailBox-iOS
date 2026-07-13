@@ -707,24 +707,23 @@ chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
 
 - App Store App ID：`6783572832`
 - Bundle ID：`com.trailbox.ios`
-- 已上传版本：`0.1.3`
-- 当前提交审核 build：`5`
-- App Store Version ID：`edaa7e2c-e96f-4f8a-a7d9-c39861dc7c6e`
-- Build ID / Delivery UUID：`63c6fe35-b511-44c3-904b-286c72d447d5`
-- Review Submission ID：`3e32f20e-9c6e-43e6-a496-0e3e288354fb`
+- 已上传版本：`0.1.4`
+- 当前提交审核 build：`6`
+- App Store Version ID：`4472a40c-5ba9-4dc8-83ff-d8213b102ba4`
+- Build ID / Delivery UUID：`bbb197df-7902-48af-84f4-84f304388575`
+- Review Submission ID：`a93f7973-5497-4a84-956d-62cf0447a051`
 - 当前审核状态：`WAITING_FOR_REVIEW`
-- 提交时间：`2026-07-08T10:05:23.849Z`
-- 旧审核提交 `3e27b014-390f-4448-8dcd-c81111c84724` 已由开发者拒绝，原 build `2` 不再作为当前审核 build。
-- 上一版审核提交 `e13f6df6-d463-430c-9796-3c8d32f2e615` 对应 `0.1.2 (4)`，本次提交前已不再作为当前审核 build。
-- 更新说明：`新增 ITRA 资料绑定与 App 内详情页；支持展示 ITRA 表现分、排名、统计数据和比赛记录；优化管理后台批量上传和路线编辑；修复部分接口返回格式不一致时的错误提示。`
+- 提交时间：`2026-07-13T15:05:11.321Z`
+- 上一版 `0.1.3 (5)` 已处于 `READY_FOR_SALE`。
+- 更新说明：`全面升级路线探索与路线智能；新增出发计划、个人能力匹配和天气/设施/路况信息；优化路线详情、一键出发、收藏、GPX 导出、导航、运动记录图表与 AI 复盘。`
 
 ### 15.3 构建与上传命令
 
 构建前至少提升 build 号；如果线上同版本已上架，必须提升 `MARKETING_VERSION`，仅提升 `CURRENT_PROJECT_VERSION` 会被 Apple 拒绝。当前项目已提升到：
 
 ```text
-MARKETING_VERSION = 0.1.3
-CURRENT_PROJECT_VERSION = 5
+MARKETING_VERSION = 0.1.4
+CURRENT_PROJECT_VERSION = 6
 ```
 
 Archive：
