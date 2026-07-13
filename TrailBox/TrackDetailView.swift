@@ -218,6 +218,7 @@ final class TrackDetailViewModel: ObservableObject {
 struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
+    @EnvironmentObject private var recentRoutes: RecentRoutesStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = TrackDetailViewModel()
@@ -446,20 +447,31 @@ struct TrackDetailView: View {
             guard isPublicSource else { return }
             await routeIntelligence.discoverNearbyPOIs(trackID: track.id, points: track.points)
         }
+        .task(id: "recent-\(track.id)") {
+            guard isPublicSource else { return }
+            recentRoutes.record(track)
+        }
     }
 
     @ViewBuilder
     private func routeIntelligenceSections(_ track: Track) -> some View {
-        if routeIntelligence.isLoading && routeIntelligence.analysis == nil {
+        if routeIntelligence.isLoadingAnalysis && routeIntelligence.analysis == nil {
             routeSkeletonCard(title: "正在生成路线分析", rows: 3)
                 .padding(.horizontal, 16)
                 .transition(.opacity)
-        } else if routeIntelligence.analysis == nil, let message = routeIntelligence.errorMessage {
+        } else if routeIntelligence.analysis == nil, let message = routeIntelligence.analysisErrorMessage {
             SectionCard {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .font(.subheadline)
-                    .foregroundStyle(TrailBoxColor.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 12) {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("重试") {
+                        Task { await routeIntelligence.load(trackID: track.id, token: session.token) }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
             }
             .padding(.horizontal, 16)
             .transition(.opacity)
@@ -575,10 +587,25 @@ struct TrackDetailView: View {
             weatherCard(weather)
                 .padding(.horizontal, 16)
                 .transition(.opacity)
-        } else if routeIntelligence.isLoading {
+        } else if routeIntelligence.isLoadingWeather {
             routeSkeletonCard(title: "正在获取路线天气", rows: 2)
                 .padding(.horizontal, 16)
                 .transition(.opacity)
+        } else if let message = routeIntelligence.weatherErrorMessage {
+            SectionCard {
+                HStack(spacing: 12) {
+                    Label(message, systemImage: "cloud.sun")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                    Spacer(minLength: 8)
+                    Button("重试") {
+                        Task { await routeIntelligence.load(trackID: track.id, token: session.token) }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+            }
+            .padding(.horizontal, 16)
+            .transition(.opacity)
         }
 
         SectionCard {

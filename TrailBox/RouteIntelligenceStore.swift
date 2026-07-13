@@ -25,15 +25,23 @@ final class RouteIntelligenceStore: ObservableObject {
     @Published private(set) var activityMatches: [RouteMatch] = []
     @Published private(set) var completions: RouteCompletionSummary?
     @Published private(set) var isLoading = false
+    @Published private(set) var isLoadingAnalysis = false
+    @Published private(set) var isLoadingWeather = false
     @Published private(set) var isLoadingPOIs = true
     @Published private(set) var isDiscoveringPOIs = false
     @Published private(set) var isSavingPOIs = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var analysisErrorMessage: String?
+    @Published private(set) var weatherErrorMessage: String?
 
     func load(trackID: String, token: String?) async {
         isLoading = true
+        isLoadingAnalysis = true
+        isLoadingWeather = true
         isLoadingPOIs = true
         errorMessage = nil
+        analysisErrorMessage = nil
+        weatherErrorMessage = nil
 
         async let analysisResult: RouteAnalysis? = optionalRequest("/tracks/\(trackID)/analysis", token: token)
         async let weatherResult: RouteWeather? = optionalRequest("/tracks/\(trackID)/weather")
@@ -49,14 +57,19 @@ final class RouteIntelligenceStore: ObservableObject {
             discoveredPOIs = []
         }
         analysis = await analysisResult
+        isLoadingAnalysis = false
+        if analysis == nil {
+            analysisErrorMessage = "路线分析暂时不可用，基础轨迹信息仍可正常查看。"
+        }
         personalFit = await fitResult
         weather = await weatherResult
+        isLoadingWeather = false
+        if weather == nil {
+            weatherErrorMessage = "路线天气暂时不可用，请稍后重试。"
+        }
         conditions = await conditionResult ?? []
         reviews = await reviewResult
         completions = await completionResult
-        if analysis == nil {
-            errorMessage = "路线分析暂时不可用，基础轨迹信息仍可正常查看。"
-        }
         isLoading = false
     }
 

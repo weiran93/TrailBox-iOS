@@ -381,31 +381,128 @@ struct ProfileView: View {
 struct SavedRoutesView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
+    @State private var query = ""
+    @State private var selectedCity: String?
+    @State private var sort = SavedRouteSort.savedOrder
+    @State private var selectedTrackID: String?
+
+    private enum SavedRouteSort: String, CaseIterable, Identifiable {
+        case savedOrder = "收藏顺序"
+        case newest = "最新发布"
+        case shortest = "距离最短"
+        case longest = "距离最长"
+        case highestClimb = "爬升最高"
+
+        var id: String { rawValue }
+    }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                if savedRoutes.tracks.isEmpty {
+        List {
+            if savedRoutes.tracks.isEmpty {
+                Section {
                     EmptyStateView(title: "还没有收藏路线", systemImage: "bookmark", message: "去探索页收藏感兴趣的路线吧")
                         .frame(minHeight: 320)
-                } else {
-                    ForEach(savedRoutes.tracks) { track in
-                        NavigationLink {
-                            TrackDetailView(trackID: track.id, isPublicSource: true)
-                        } label: {
-                            TrackCard(track: track, isActivity: false)
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else if visibleTracks.isEmpty {
+                Section {
+                    VStack(spacing: 12) {
+                        EmptyStateView(title: "没有匹配路线", systemImage: "magnifyingglass", message: "试试修改搜索词或城市筛选。")
+                            .frame(minHeight: 250)
+                        Button("重置筛选") {
+                            query = ""
+                            selectedCity = nil
                         }
-                        .buttonStyle(.plain)
+                    }
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else {
+                ForEach(visibleTracks) { track in
+                    Button {
+                        selectedTrackID = track.id
+                    } label: {
+                        TrackCard(track: track, isActivity: false)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("取消收藏", role: .destructive) {
+                            guard let token = session.token else { return }
+                            Task { await savedRoutes.toggle(trackID: track.id, token: token) }
+                        }
                     }
                 }
             }
-            .padding(16)
         }
+        .listStyle(.plain)
         .background(TrailBoxColor.background)
         .navigationTitle("收藏路线")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "搜索名称、城市或标签")
+        .navigationDestination(isPresented: Binding(
+            get: { selectedTrackID != nil },
+            set: { if !$0 { selectedTrackID = nil } }
+        )) {
+            if let selectedTrackID {
+                TrackDetailView(trackID: selectedTrackID, isPublicSource: true)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("排序", selection: $sort) {
+                        ForEach(SavedRouteSort.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    Picker("城市", selection: $selectedCity) {
+                        Text("全部城市").tag(String?.none)
+                        ForEach(availableCities, id: \.self) { city in
+                            Text(city).tag(Optional(city))
+                        }
+                    }
+                } label: {
+                    Label("筛选与排序", systemImage: "line.3.horizontal.decrease")
+                }
+            }
+        }
         .task {
             await savedRoutes.load(token: session.token)
+        }
+        .refreshable {
+            await savedRoutes.load(token: session.token)
+        }
+    }
+
+    private var availableCities: [String] {
+        Array(Set(savedRoutes.tracks.compactMap(\.city).filter { !$0.isEmpty })).sorted()
+    }
+
+    private var visibleTracks: [Track] {
+        let filtered = savedRoutes.tracks.filter { track in
+            savedRoutes.isSaved(track.id)
+                && (selectedCity == nil || track.city == selectedCity)
+                && (query.isEmpty || [track.name, track.city ?? "", track.tags ?? ""]
+                    .joined(separator: " ")
+                    .localizedCaseInsensitiveContains(query))
+        }
+        switch sort {
+        case .savedOrder:
+            return filtered
+        case .newest:
+            return filtered.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+        case .shortest:
+            return filtered.sorted { $0.distanceM < $1.distanceM }
+        case .longest:
+            return filtered.sorted { $0.distanceM > $1.distanceM }
+        case .highestClimb:
+            return filtered.sorted { $0.elevationGainM > $1.elevationGainM }
         }
     }
 }

@@ -68,6 +68,7 @@ final class ExploreViewModel: ObservableObject {
 struct ExploreView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
+    @EnvironmentObject private var recentRoutes: RecentRoutesStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = ExploreViewModel()
     @State private var showFilters = false
@@ -148,6 +149,36 @@ struct ExploreView: View {
 
     private var content: some View {
         List {
+            if viewModel.keyword.isEmpty, !recentRoutes.routes.isEmpty {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Label("最近浏览", systemImage: "clock.arrow.circlepath")
+                                .font(.headline)
+                                .foregroundStyle(TrailBoxColor.text)
+                            Spacer()
+                            Button("清除") { recentRoutes.clear() }
+                                .font(.caption.weight(.semibold))
+                        }
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(recentRoutes.routes) { route in
+                                    Button { navigationPath.append(route.id) } label: {
+                                        RecentRouteCard(route: route)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             if !viewModel.tags.isEmpty {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -250,7 +281,16 @@ struct TrackCard: View {
                     .frame(maxWidth: .infinity)
                     .aspectRatio(16.0 / 8.0, contentMode: .fit)
                 LinearGradient(colors: [.black.opacity(0.18), .clear, .black.opacity(0.64)], startPoint: .top, endPoint: .bottom)
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text("路线负荷 · \(routeEffort)")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.5), in: Capsule())
+                        Spacer()
+                    }
                     Spacer()
                     Text(track.name).font(.headline.bold()).foregroundStyle(.white).lineLimit(2).shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                 }.padding(14)
@@ -265,7 +305,11 @@ struct TrackCard: View {
                 }
                 if !track.tagList.isEmpty { HStack(spacing: 5) { ForEach(track.tagList.prefix(3), id: \.self) { Text($0).font(.caption.weight(.medium)).foregroundStyle(TrailBoxColor.primaryDark).padding(.horizontal, 8).padding(.vertical, 4).background(TrailBoxColor.primary.opacity(0.12)).clipShape(Capsule()) } } }
                 Divider().overlay(TrailBoxColor.border)
-                HStack(spacing: 0) { exploreStat(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text); exploreStat(compactElevation(track.elevationGainM), "爬升", TrailBoxColor.primary); exploreStat(compactElevation(track.elevationLossM), "下降", .orange) }
+                HStack(spacing: 0) {
+                    exploreStat(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text)
+                    exploreStat(compactElevation(track.elevationGainM), "爬升", TrailBoxColor.primary)
+                    exploreStat(climbDensityText, "爬升密度", routeEffortColor)
+                }
             }.padding(16)
         }
         .background(TrailBoxColor.surface).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -295,6 +339,32 @@ struct TrackCard: View {
     private func exploreStat(_ value: String, _ label: String, _ color: Color) -> some View { VStack(spacing: 3) { Text(value).font(.title3.bold()).foregroundStyle(color); Text(label).font(.caption).foregroundStyle(TrailBoxColor.secondaryText) }.frame(maxWidth: .infinity) }
     private func compactElevation(_ value: Double) -> String { value >= 1000 ? String(format: "%.2fk", value / 1000) : String(format: "%.0f", value) }
 
+    private var climbDensity: Double {
+        guard track.distanceM > 0 else { return 0 }
+        return track.elevationGainM / (track.distanceM / 1_000)
+    }
+
+    private var climbDensityText: String {
+        track.distanceM > 0 ? "\(Int(climbDensity.rounded())) m/km" : "-"
+    }
+
+    private var routeEffort: String {
+        let distanceKM = track.distanceM / 1_000
+        if distanceKM >= 50 || climbDensity >= 140 { return "极限" }
+        if distanceKM >= 30 || climbDensity >= 90 { return "挑战" }
+        if distanceKM >= 15 || climbDensity >= 50 { return "进阶" }
+        return "轻量"
+    }
+
+    private var routeEffortColor: Color {
+        switch routeEffort {
+        case "极限": return .red
+        case "挑战": return .orange
+        case "进阶": return .yellow.opacity(0.85)
+        default: return TrailBoxColor.primaryDark
+        }
+    }
+
     private func stat(_ value: String, label: String) -> some View { VStack(alignment: .leading, spacing: 2) { Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.text); Text(label).font(.caption2).foregroundStyle(TrailBoxColor.secondaryText) } }
 
     private var subtitle: String {
@@ -305,6 +375,42 @@ struct TrackCard: View {
     private var activityDateAndSport: String { subtitle + (track.sport.map { " · \($0)" } ?? "") }
     private var durationText: String { guard let seconds = track.durationSec, seconds > 0 else { return "-" }; return String(format: "%d:%02d", Int(seconds) / 3600, (Int(seconds) % 3600) / 60) }
     private func coreAnalysis(_ text: String) -> String { let sections = text.components(separatedBy: "【核心判断】"); let body = sections.count > 1 ? sections[1].components(separatedBy: "【").first ?? text : text; return body.replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
+}
+
+private struct RecentRouteCard: View {
+    let route: RecentRoute
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(.headline)
+                    .foregroundStyle(TrailBoxColor.primaryDark)
+                    .frame(width: 36, height: 36)
+                    .background(TrailBoxColor.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(route.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(TrailBoxColor.text)
+                        .lineLimit(2)
+                    Text(route.city ?? "城市待补充")
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 12) {
+                Label(DisplayFormat.distance(route.distanceM), systemImage: "arrow.left.and.right")
+                Label(DisplayFormat.elevation(route.elevationGainM), systemImage: "mountain.2")
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(TrailBoxColor.secondaryText)
+        }
+        .padding(12)
+        .frame(width: 230, height: 112, alignment: .leading)
+        .background(TrailBoxColor.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TrailBoxColor.border.opacity(0.55), lineWidth: 0.5))
+    }
 }
 
 struct RouteThumbnail: View {
