@@ -172,6 +172,7 @@ struct MyTracksView: View {
                     }
                 }
         }
+        .toolbar(navigationPath.isEmpty ? .visible : .hidden, for: .tabBar)
     }
 
     private var summary: some View {

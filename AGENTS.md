@@ -154,7 +154,7 @@ python3 run.py
 ### 3.2 架构模式
 
 - **MVVM-lite**：每个主要页面都有独立的 `ViewModel`（`ExploreViewModel`、`MyTracksViewModel`、`TrackDetailViewModel`、`ShareCardRenderer`），视图持有 `@StateObject`。
-- **全局状态注入**：`SessionStore`、`DeepLinkRouter`、`SavedRoutesStore`、`RecentRoutesStore` 作为 `EnvironmentObject` 在 `TrailBoxApp` 注入。
+- **全局状态注入**：`SessionStore`、`DeepLinkRouter`、`SavedRoutesStore` 作为 `EnvironmentObject` 在 `TrailBoxApp` 注入。
 - **单例依赖**：`APIClient.shared` 是网络入口；没有 DI 容器或协议抽象，新增依赖保持同样风格即可。
 - **无测试**：当前无 Unit Test / UI Test 目标。
 
@@ -193,7 +193,6 @@ python3 run.py
 | `APIClient.swift` | 单例 REST 客户端：JSON 请求、multipart 上传、GPX 下载、日期解析兼容 |
 | `SessionStore.swift` | 认证状态：登录/注册/登出/注销、token 管理、401 处理 |
 | `SavedRoutesStore.swift` | 跨页面维护「收藏路线」状态，封装收藏列表加载与增删操作 |
-| `RecentRoutesStore.swift` | 本地维护最近浏览的公开路线轻量摘要，最多保存 8 条，不持久化 GPS 点 |
 | `KeychainStore.swift` | Keychain 封装，用于保存 access token |
 | `AppConfiguration.swift` | API Base URL、隐私政策链接、支持邮箱、启动参数读取 |
 | `DesignSystem.swift` | 全局颜色、卡片组件、空状态、格式化工具 |
@@ -352,7 +351,7 @@ struct TrailBoxApp: App {
 ### 7.1 探索路线（ExploreView）
 
 - 公开轨迹卡片列表，上图下文布局。
-- 路线卡片展示可解释的路线负荷和每公里爬升密度；最近浏览以轻量摘要保存在本机。
+- 路线卡片展示可解释的路线负荷和每公里爬升密度。
 - 顶部：搜索框 + 标签横向滚动。
 - 底部面板：城市筛选、距离范围、排序（最新/距离/海拔等）。
 - 分页：每页 20 条，下滑加载更多。

@@ -218,7 +218,6 @@ final class TrackDetailViewModel: ObservableObject {
 struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
-    @EnvironmentObject private var recentRoutes: RecentRoutesStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = TrackDetailViewModel()
@@ -446,10 +445,6 @@ struct TrackDetailView: View {
         .task(id: track.id) {
             guard isPublicSource else { return }
             await routeIntelligence.discoverNearbyPOIs(trackID: track.id, points: track.points)
-        }
-        .task(id: "recent-\(track.id)") {
-            guard isPublicSource else { return }
-            recentRoutes.record(track)
         }
     }
 

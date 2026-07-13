@@ -68,7 +68,6 @@ final class ExploreViewModel: ObservableObject {
 struct ExploreView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
-    @EnvironmentObject private var recentRoutes: RecentRoutesStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = ExploreViewModel()
     @State private var showFilters = false
@@ -136,6 +135,7 @@ struct ExploreView: View {
                 }
             }
         }
+        .toolbar(navigationPath.isEmpty ? .visible : .hidden, for: .tabBar)
     }
 
     private func openContribution() {
@@ -149,36 +149,6 @@ struct ExploreView: View {
 
     private var content: some View {
         List {
-            if viewModel.keyword.isEmpty, !recentRoutes.routes.isEmpty {
-                Section {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Label("最近浏览", systemImage: "clock.arrow.circlepath")
-                                .font(.headline)
-                                .foregroundStyle(TrailBoxColor.text)
-                            Spacer()
-                            Button("清除") { recentRoutes.clear() }
-                                .font(.caption.weight(.semibold))
-                        }
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(recentRoutes.routes) { route in
-                                    Button { navigationPath.append(route.id) } label: {
-                                        RecentRouteCard(route: route)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                }
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
-
             if !viewModel.tags.isEmpty {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -375,42 +345,6 @@ struct TrackCard: View {
     private var activityDateAndSport: String { subtitle + (track.sport.map { " · \($0)" } ?? "") }
     private var durationText: String { guard let seconds = track.durationSec, seconds > 0 else { return "-" }; return String(format: "%d:%02d", Int(seconds) / 3600, (Int(seconds) % 3600) / 60) }
     private func coreAnalysis(_ text: String) -> String { let sections = text.components(separatedBy: "【核心判断】"); let body = sections.count > 1 ? sections[1].components(separatedBy: "【").first ?? text : text; return body.replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
-}
-
-private struct RecentRouteCard: View {
-    let route: RecentRoute
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                    .font(.headline)
-                    .foregroundStyle(TrailBoxColor.primaryDark)
-                    .frame(width: 36, height: 36)
-                    .background(TrailBoxColor.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(route.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(TrailBoxColor.text)
-                        .lineLimit(2)
-                    Text(route.city ?? "城市待补充")
-                        .font(.caption)
-                        .foregroundStyle(TrailBoxColor.secondaryText)
-                }
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 12) {
-                Label(DisplayFormat.distance(route.distanceM), systemImage: "arrow.left.and.right")
-                Label(DisplayFormat.elevation(route.elevationGainM), systemImage: "mountain.2")
-            }
-            .font(.caption.weight(.medium))
-            .foregroundStyle(TrailBoxColor.secondaryText)
-        }
-        .padding(12)
-        .frame(width: 230, height: 112, alignment: .leading)
-        .background(TrailBoxColor.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TrailBoxColor.border.opacity(0.55), lineWidth: 0.5))
-    }
 }
 
 struct RouteThumbnail: View {
