@@ -215,6 +215,48 @@ final class TrackDetailViewModel: ObservableObject {
     }
 }
 
+private enum RouteDetailSection: String, CaseIterable, Identifiable, Hashable {
+    case overview
+    case analysis
+    case facilities
+    case community
+    case profile
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .overview: return "概览"
+        case .analysis: return "分析"
+        case .facilities: return "设施"
+        case .community: return "跑友"
+        case .profile: return "剖面"
+        }
+    }
+}
+
+private struct RouteDecisionPoint: Identifiable {
+    let systemImage: String
+    let text: String
+    let color: Color
+    var id: String { "\(systemImage)-\(text)" }
+}
+
+private struct RouteDecisionSummary {
+    let title: String
+    let level: String
+    let explanation: String
+    let color: Color
+    let systemImage: String
+    let points: [RouteDecisionPoint]
+    let sourceText: String
+    let isUpdating: Bool
+
+    var animationKey: String {
+        ([title, level, explanation, sourceText] + points.map(\.text)).joined(separator: "|")
+    }
+}
+
 struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
@@ -238,6 +280,8 @@ struct TrackDetailView: View {
     @State private var showReport = false
     @State private var showRouteFeedback = false
     @State private var navigationDestination: NavigationDestination?
+    @State private var selectedRouteSection: RouteDetailSection = .overview
+    @Namespace private var routeSectionSelection
     let trackID: String
     let isPublicSource: Bool
     let onDeleted: (() async -> Void)?
@@ -287,93 +331,96 @@ struct TrackDetailView: View {
     private func details(_ track: Track) -> some View {
         let metrics = RouteMetrics(points: track.points)
         return ZStack(alignment: .top) {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if isPublicSource {
-                    publicRouteHero(track)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                } else { activityHero(track).padding(.horizontal, 16).padding(.top, 8) }
-                if !isPublicSource { analysisCard(track) }
-                if !isPublicSource, !routeIntelligence.activityMatches.isEmpty {
-                    activityMatchesCard
-                        .padding(.horizontal, 16)
-                }
-                if !isPublicSource {
-                    ZStack(alignment: .topTrailing) {
-                        TrackMap(points: track.points, pois: routeMapPOIs).frame(height: 280)
-                        Button { showFullscreenMap = true } label: {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(TrailBoxColor.text)
-                                .frame(width: 44, height: 44)
-                                .contentShape(Circle())
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
+                        if isPublicSource {
+                            publicRouteHero(track)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                        } else {
+                            activityHero(track)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
                         }
-                        .buttonStyle(.plain)
-                        .trailBoxGlass(in: Circle())
-                        .padding(12)
-                    }
-                }
-                if let start = track.points.first, let end = track.points.last {
-                    HStack(spacing: 12) {
-                        endpointButton(title: "起点", point: start, trackName: track.name, color: TrailBoxColor.primaryDark)
-                        endpointButton(title: "终点", point: end, trackName: track.name, color: TrailBoxColor.danger)
-                    }.padding(.horizontal, 16)
-                }
-                if isPublicSource {
-                    publicRouteSnapshot(track, metrics: metrics)
-                        .padding(.horizontal, 16)
-                    routeIntelligenceSections(track)
-                } else {
-                    SectionCard {
-                        HStack(spacing: 0) {
-                            metric(DisplayFormat.distance(track.distanceM), "距离")
-                            metric(DisplayFormat.elevation(track.elevationGainM), "爬升")
-                            metric(DisplayFormat.elevation(track.elevationLossM), "下降")
-                            metric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔")
+                        if !isPublicSource { analysisCard(track) }
+                        if !isPublicSource, !routeIntelligence.activityMatches.isEmpty {
+                            activityMatchesCard
+                                .padding(.horizontal, 16)
                         }
-                    }.padding(.horizontal, 16)
-                }
-                ElevationChart(points: track.points, title: "海拔剖面").padding(.horizontal, 16)
-                if !isPublicSource {
-                    ActivityCharts(points: track.points).padding(.horizontal, 16)
-                } else {
-                    GradeChart(metrics: metrics).padding(.horizontal, 16)
-                }
-                if track.city != nil || !track.tagList.isEmpty { SectionCard { VStack(alignment: .leading, spacing: 10) { if let city = track.city { HStack { Text("城市").foregroundStyle(TrailBoxColor.secondaryText); Spacer(); Text(city).fontWeight(.semibold) } }; if !track.tagList.isEmpty { Divider(); VStack(alignment: .leading, spacing: 6) { Text("标签").font(.headline); Text(track.tagList.joined(separator: " · ")).font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) } } } }.padding(.horizontal, 16) }
-                if let reason = track.recommendationReason, !reason.isEmpty, isPublicSource {
-                    SectionCard {
-                        HStack(alignment: .top, spacing: 12) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(TrailBoxColor.primary.opacity(0.35))
-                                .frame(width: 3)
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(reason)
-                                    .font(.subheadline)
-                                    .lineSpacing(3)
-                                    .foregroundStyle(TrailBoxColor.text)
-                                    .fixedSize(horizontal: false, vertical: true)
-
-                                if let contributor = track.contributorName, track.showContributor {
-                                    Text("—— \(contributor) 推荐")
-                                        .font(.caption)
-                                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        if !isPublicSource {
+                            ZStack(alignment: .topTrailing) {
+                                TrackMap(points: track.points, pois: routeMapPOIs).frame(height: 280)
+                                Button { showFullscreenMap = true } label: {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(TrailBoxColor.text)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Circle())
                                 }
+                                .buttonStyle(.plain)
+                                .trailBoxGlass(in: Circle())
+                                .padding(12)
                             }
                         }
+                        if let start = track.points.first, let end = track.points.last {
+                            HStack(spacing: 12) {
+                                endpointButton(title: "起点", point: start, trackName: track.name, color: TrailBoxColor.primaryDark)
+                                endpointButton(title: "终点", point: end, trackName: track.name, color: TrailBoxColor.danger)
+                            }
+                            .padding(.horizontal, 16)
+                        }
+
+                        if isPublicSource {
+                            publicRouteSnapshot(track, metrics: metrics)
+                                .padding(.horizontal, 16)
+
+                            routeDecisionCard(track)
+                                .padding(.horizontal, 16)
+                                .id(RouteDetailSection.overview)
+
+                            Section {
+                                Color.clear.frame(height: 0).id(RouteDetailSection.analysis)
+                                routeIntelligenceSections(track)
+
+                                Color.clear.frame(height: 0).id(RouteDetailSection.profile)
+                                ElevationChart(points: track.points, title: "海拔剖面")
+                                    .padding(.horizontal, 16)
+                                GradeChart(metrics: metrics)
+                                    .padding(.horizontal, 16)
+                                trackMetadataSection(track)
+                                routeRecommendationSection(track)
+                            } header: {
+                                routeSectionNavigator(scrollProxy)
+                                    .zIndex(3)
+                            }
+                        } else {
+                            SectionCard {
+                                HStack(spacing: 0) {
+                                    metric(DisplayFormat.distance(track.distanceM), "距离")
+                                    metric(DisplayFormat.elevation(track.elevationGainM), "爬升")
+                                    metric(DisplayFormat.elevation(track.elevationLossM), "下降")
+                                    metric(track.points.compactMap(\.altitude).max().map(DisplayFormat.elevation) ?? "-", "最高海拔")
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            ElevationChart(points: track.points, title: "海拔剖面")
+                                .padding(.horizontal, 16)
+                            ActivityCharts(points: track.points)
+                                .padding(.horizontal, 16)
+                            trackMetadataSection(track)
+                        }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
                 }
-            }.padding(.bottom, 24)
-        }
-        if isVoiceGestureActive && voiceRecorder.isRecording {
-            VoiceTranscriptBubble(transcript: voiceRecorder.transcript)
-                .padding(.horizontal, 32)
-                .padding(.top, 112)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-        }
+            }
+            if isVoiceGestureActive && voiceRecorder.isRecording {
+                VoiceTranscriptBubble(transcript: voiceRecorder.transcript)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 112)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -602,6 +649,7 @@ struct TrackDetailView: View {
             .transition(.opacity)
         }
 
+        Color.clear.frame(height: 0).id(RouteDetailSection.facilities)
         SectionCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("沿途设施").font(.headline)
@@ -686,6 +734,7 @@ struct TrackDetailView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: routeIntelligence.isDiscoveringPOIs)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: routeIntelligence.pois.count + routeIntelligence.discoveredPOIs.count)
 
+        Color.clear.frame(height: 0).id(RouteDetailSection.community)
         if !routeIntelligence.conditions.isEmpty {
             SectionCard {
                 VStack(alignment: .leading, spacing: 12) {
@@ -788,6 +837,352 @@ struct TrackDetailView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
+    }
+
+    private func routeDecisionCard(_ track: Track) -> some View {
+        let decision = routeDecision(for: track)
+        return SectionCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 10) {
+                    Label("出发决策", systemImage: "figure.hiking")
+                        .font(.headline)
+                        .foregroundStyle(TrailBoxColor.text)
+                    Spacer(minLength: 8)
+                    if decision.isUpdating {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("正在更新路线信息")
+                    }
+                    Text(decision.level)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(decision.color)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(decision.color.opacity(0.11), in: Capsule())
+                }
+
+                HStack(alignment: .top, spacing: 13) {
+                    Image(systemName: decision.systemImage)
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(decision.color)
+                        .frame(width: 42, height: 42)
+                        .background(decision.color.opacity(0.11), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(decision.title)
+                            .font(.system(size: 21, weight: .heavy, design: .rounded))
+                            .foregroundStyle(TrailBoxColor.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(decision.explanation)
+                            .font(.subheadline)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                            .lineSpacing(2)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(decision.points) { point in
+                        HStack(alignment: .top, spacing: 11) {
+                            Image(systemName: point.systemImage)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(point.color)
+                                .frame(width: 28, height: 28)
+                                .background(point.color.opacity(0.1), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            Text(point.text)
+                                .font(.subheadline)
+                                .foregroundStyle(TrailBoxColor.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                Label("实时汇总 · \(decision.sourceText)", systemImage: "checkmark.seal")
+                    .font(.caption2)
+                    .foregroundStyle(TrailBoxColor.secondaryText)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: decision.animationKey)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func routeDecision(for track: Track) -> RouteDecisionSummary {
+        let warningCondition = routeIntelligence.conditions.first { $0.severity == "warning" }
+        let fit = routeIntelligence.personalFit
+        let analysis = routeIntelligence.analysis
+
+        let title: String
+        let level: String
+        let color: Color
+        let systemImage: String
+        if warningCondition != nil {
+            title = "路线存在近期风险"
+            level = "路况提醒"
+            color = TrailBoxColor.warning
+            systemImage = "exclamationmark.triangle.fill"
+        } else if let fit, fit.score < 55 {
+            title = "建议谨慎评估"
+            level = "谨慎"
+            color = TrailBoxColor.warning
+            systemImage = "gauge.with.dots.needle.33percent"
+        } else if let analysis, analysis.difficultyScore >= 80 {
+            title = "高难路线，充分准备"
+            level = analysis.difficultyLevel
+            color = TrailBoxColor.danger
+            systemImage = "mountain.2.fill"
+        } else if let fit, fit.score >= 80 {
+            title = "与你当前能力匹配"
+            level = fit.level
+            color = TrailBoxColor.primaryDark
+            systemImage = "checkmark.circle.fill"
+        } else if let fit {
+            title = "具备挑战条件"
+            level = fit.level
+            color = TrailBoxColor.primaryDark
+            systemImage = "figure.run.circle.fill"
+        } else if let analysis {
+            title = analysis.difficultyScore >= 60 ? "进阶路线，建议做好准备" : "路线强度相对友好"
+            level = analysis.difficultyLevel
+            color = analysis.difficultyScore >= 60 ? TrailBoxColor.warning : TrailBoxColor.primaryDark
+            systemImage = analysis.difficultyScore >= 60 ? "mountain.2.fill" : "checkmark.circle.fill"
+        } else if track.distanceM >= 30_000 || track.elevationGainM >= 1_500 {
+            title = "长距离路线，建议充分准备"
+            level = "进阶"
+            color = TrailBoxColor.warning
+            systemImage = "mountain.2.fill"
+        } else {
+            title = routeIntelligence.isLoading ? "正在整理出发建议" : "基础路线信息已就绪"
+            level = routeIntelligence.isLoading ? "更新中" : "待完善"
+            color = TrailBoxColor.primaryDark
+            systemImage = routeIntelligence.isLoading ? "arrow.triangle.2.circlepath" : "map.fill"
+        }
+
+        let explanation: String
+        if let warningCondition,
+           let description = warningCondition.description,
+           !description.isEmpty {
+            explanation = description
+        } else if let warningCondition {
+            explanation = "跑友反馈近期存在\(conditionTitle(warningCondition.conditionType))，出发前请再次确认。"
+        } else if let fit {
+            explanation = fit.reason
+        } else if let feature = analysis?.features.first {
+            explanation = feature
+        } else if routeIntelligence.isLoadingAnalysis {
+            explanation = "正在结合轨迹强度、天气、设施和近期路况生成建议。"
+        } else {
+            explanation = "先参考距离与爬升规划体力和补给，动态信息将在可用时自动补充。"
+        }
+
+        var points: [RouteDecisionPoint] = []
+        if let minimum = fit?.estimatedDurationMin ?? analysis?.estimatedDurationMin,
+           let maximum = fit?.estimatedDurationMax ?? analysis?.estimatedDurationMax {
+            points.append(RouteDecisionPoint(
+                systemImage: "clock.fill",
+                text: "预计用时 \(formatMinutes(minimum))–\(formatMinutes(maximum))",
+                color: TrailBoxColor.sky
+            ))
+        } else {
+            points.append(RouteDecisionPoint(
+                systemImage: "clock",
+                text: routeIntelligence.isLoadingAnalysis ? "预计用时正在计算" : "暂无可靠用时估算，请预留充足机动时间",
+                color: TrailBoxColor.secondaryText
+            ))
+        }
+
+        if let weather = routeIntelligence.weather {
+            let rainProbability = weather.daily.precipitationProbabilityMax?.first
+            if let rainProbability, rainProbability >= 40 {
+                points.append(RouteDecisionPoint(
+                    systemImage: "cloud.rain.fill",
+                    text: "降雨概率最高 \(rainProbability)%，注意防滑和保暖",
+                    color: TrailBoxColor.warning
+                ))
+            } else if let gust = weather.current.windGusts, gust >= 45 {
+                points.append(RouteDecisionPoint(
+                    systemImage: "wind",
+                    text: "当前阵风约 \(Int(gust.rounded())) km/h，暴露路段需谨慎",
+                    color: TrailBoxColor.warning
+                ))
+            } else if let sunset = weather.daily.sunset?.first {
+                points.append(RouteDecisionPoint(
+                    systemImage: "sunset.fill",
+                    text: "日落 \(clockTime(sunset))，建议至少提前 1 小时结束",
+                    color: TrailBoxColor.warning
+                ))
+            } else {
+                points.append(RouteDecisionPoint(
+                    systemImage: "cloud.sun.fill",
+                    text: "已获取路线附近动态天气，出发前请再次确认",
+                    color: TrailBoxColor.sky
+                ))
+            }
+        } else {
+            points.append(RouteDecisionPoint(
+                systemImage: "cloud.sun",
+                text: routeIntelligence.isLoadingWeather ? "正在检查天气和日落时间" : "动态天气暂不可用，出发前请自行确认",
+                color: routeIntelligence.isLoadingWeather ? TrailBoxColor.sky : TrailBoxColor.secondaryText
+            ))
+        }
+
+        if let warningCondition {
+            points.append(RouteDecisionPoint(
+                systemImage: "exclamationmark.triangle.fill",
+                text: "近期路况：\(conditionTitle(warningCondition.conditionType))",
+                color: TrailBoxColor.warning
+            ))
+        } else if let preparation = analysis?.preparation,
+                  let safetyNote = preparation.safetyNotes.first {
+            points.append(RouteDecisionPoint(
+                systemImage: "backpack.fill",
+                text: safetyNote,
+                color: TrailBoxColor.moss
+            ))
+        } else if analysis?.preparation?.headlampRecommended == true {
+            points.append(RouteDecisionPoint(
+                systemImage: "flashlight.on.fill",
+                text: "建议携带头灯，并准备备用电量",
+                color: TrailBoxColor.moss
+            ))
+        }
+
+        let verifiedPOICount = routeIntelligence.pois.filter { $0.status == "verified" }.count
+        let mapPOICount = routeIntelligence.pois.filter { $0.status != "verified" }.count + routeIntelligence.discoveredPOIs.count
+        if verifiedPOICount > 0 {
+            points.append(RouteDecisionPoint(
+                systemImage: "checkmark.seal.fill",
+                text: "有 \(verifiedPOICount) 处跑友确认设施，仍建议携带基础补给",
+                color: TrailBoxColor.primaryDark
+            ))
+        } else if mapPOICount > 0 {
+            points.append(RouteDecisionPoint(
+                systemImage: "mappin.and.ellipse",
+                text: "发现 \(mapPOICount) 处地图设施，尚未核实补水可靠性",
+                color: TrailBoxColor.warning
+            ))
+        } else {
+            points.append(RouteDecisionPoint(
+                systemImage: "waterbottle.fill",
+                text: (routeIntelligence.isLoadingPOIs || routeIntelligence.isDiscoveringPOIs)
+                    ? "正在检查沿途停车、厕所、补给和医院信息"
+                    : "沿途设施尚未核实，请自备饮水和补给",
+                color: TrailBoxColor.secondaryText
+            ))
+        }
+
+        var sources: [String] = []
+        if fit != nil { sources.append("个人能力") }
+        if analysis != nil { sources.append("轨迹计算") }
+        if routeIntelligence.weather != nil { sources.append("动态天气") }
+        if !routeIntelligence.conditions.isEmpty { sources.append("跑友路况") }
+        if !routeIntelligence.pois.isEmpty || !routeIntelligence.discoveredPOIs.isEmpty { sources.append("设施信息") }
+        if sources.isEmpty { sources.append("基础轨迹") }
+
+        return RouteDecisionSummary(
+            title: title,
+            level: level,
+            explanation: explanation,
+            color: color,
+            systemImage: systemImage,
+            points: points,
+            sourceText: sources.joined(separator: "、"),
+            isUpdating: routeIntelligence.isLoadingAnalysis
+                || routeIntelligence.isLoadingWeather
+                || routeIntelligence.isLoadingPOIs
+                || routeIntelligence.isDiscoveringPOIs
+        )
+    }
+
+    private func routeSectionNavigator(_ proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 0) {
+            ForEach(RouteDetailSection.allCases) { section in
+                Button {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85)) {
+                        selectedRouteSection = section
+                        proxy.scrollTo(section, anchor: UnitPoint(x: 0.5, y: 0.12))
+                    }
+                } label: {
+                    Text(section.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(selectedRouteSection == section ? Color.white : TrailBoxColor.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background {
+                            if selectedRouteSection == section {
+                                Capsule()
+                                    .fill(TrailBoxColor.primaryDark)
+                                    .matchedGeometryEffect(id: "route-section-pill", in: routeSectionSelection)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedRouteSection == section ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .trailBoxGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder
+    private func trackMetadataSection(_ track: Track) -> some View {
+        if track.city != nil || !track.tagList.isEmpty {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let city = track.city {
+                        HStack {
+                            Text("城市").foregroundStyle(TrailBoxColor.secondaryText)
+                            Spacer()
+                            Text(city).fontWeight(.semibold)
+                        }
+                    }
+                    if !track.tagList.isEmpty {
+                        Divider()
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("标签").font(.headline)
+                            Text(track.tagList.joined(separator: " · "))
+                                .font(.subheadline)
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func routeRecommendationSection(_ track: Track) -> some View {
+        if let reason = track.recommendationReason, !reason.isEmpty {
+            SectionCard {
+                HStack(alignment: .top, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(TrailBoxColor.primary.opacity(0.35))
+                        .frame(width: 3)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(reason)
+                            .font(.subheadline)
+                            .lineSpacing(3)
+                            .foregroundStyle(TrailBoxColor.text)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let contributor = track.contributorName, track.showContributor {
+                            Text("—— \(contributor) 推荐")
+                                .font(.caption)
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
     }
 
     private func routeSkeletonCard(title: String, rows: Int) -> some View {
