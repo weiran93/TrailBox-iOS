@@ -13,6 +13,8 @@ struct DiscoveredRoutePOI: Identifiable, Equatable {
 
 @MainActor
 final class RouteIntelligenceStore: ObservableObject {
+    private static var discoveredPOICache: [String: [DiscoveredRoutePOI]] = [:]
+
     @Published private(set) var analysis: RouteAnalysis?
     @Published private(set) var personalFit: RoutePersonalFit?
     @Published private(set) var weather: RouteWeather?
@@ -23,11 +25,14 @@ final class RouteIntelligenceStore: ObservableObject {
     @Published private(set) var activityMatches: [RouteMatch] = []
     @Published private(set) var completions: RouteCompletionSummary?
     @Published private(set) var isLoading = false
+    @Published private(set) var isLoadingPOIs = true
+    @Published private(set) var isDiscoveringPOIs = false
     @Published private(set) var isSavingPOIs = false
     @Published private(set) var errorMessage: String?
 
     func load(trackID: String, token: String?) async {
         isLoading = true
+        isLoadingPOIs = true
         errorMessage = nil
 
         async let analysisResult: RouteAnalysis? = optionalRequest("/tracks/\(trackID)/analysis", token: token)
@@ -38,22 +43,38 @@ final class RouteIntelligenceStore: ObservableObject {
         async let completionResult: RouteCompletionSummary? = optionalRequest("/tracks/\(trackID)/completions")
         async let fitResult: RoutePersonalFit? = token == nil ? nil : optionalRequest("/tracks/\(trackID)/personal-fit", token: token)
 
-        let values = await (analysisResult, weatherResult, poiResult, conditionResult, reviewResult, completionResult, fitResult)
-        analysis = values.0
-        weather = values.1
-        pois = values.2 ?? []
-        conditions = values.3 ?? []
-        reviews = values.4
-        completions = values.5
-        personalFit = values.6
+        pois = await poiResult ?? []
+        isLoadingPOIs = false
+        if !pois.isEmpty {
+            discoveredPOIs = []
+        }
+        analysis = await analysisResult
+        personalFit = await fitResult
+        weather = await weatherResult
+        conditions = await conditionResult ?? []
+        reviews = await reviewResult
+        completions = await completionResult
         if analysis == nil {
             errorMessage = "路线分析暂时不可用，基础轨迹信息仍可正常查看。"
         }
         isLoading = false
     }
 
-    func discoverNearbyPOIs(points: [TrackPoint]) async {
-        guard points.count > 1, discoveredPOIs.isEmpty, pois.isEmpty else { return }
+    func discoverNearbyPOIs(trackID: String, points: [TrackPoint]) async {
+        guard points.count > 1, discoveredPOIs.isEmpty else { return }
+        isDiscoveringPOIs = true
+        defer { isDiscoveringPOIs = false }
+
+        for _ in 0..<40 where isLoadingPOIs {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if Task.isCancelled { return }
+        }
+        guard pois.isEmpty else { return }
+        if let cached = Self.discoveredPOICache[trackID] {
+            discoveredPOIs = cached
+            return
+        }
+
         let anchorIndexes = Array(Set([0, points.count / 2, points.count - 1])).sorted()
         let queries = [
             ("停车场", "parking"),
@@ -112,7 +133,12 @@ final class RouteIntelligenceStore: ObservableObject {
                 }
             }
         }
-        discoveredPOIs = Array(results.sorted { ($0.distanceAlongRouteM ?? 0) < ($1.distanceAlongRouteM ?? 0) }.prefix(12))
+        let discovered = Array(results.sorted { ($0.distanceAlongRouteM ?? 0) < ($1.distanceAlongRouteM ?? 0) }.prefix(12))
+        discoveredPOIs = discovered
+        if Self.discoveredPOICache.count >= 30, let evictedKey = Self.discoveredPOICache.keys.first {
+            Self.discoveredPOICache.removeValue(forKey: evictedKey)
+        }
+        Self.discoveredPOICache[trackID] = discovered
     }
 
     func confirmDiscoveredPOIs(trackID: String, token: String) async {
@@ -139,6 +165,7 @@ final class RouteIntelligenceStore: ObservableObject {
             )
             pois = saved
             discoveredPOIs = []
+            Self.discoveredPOICache.removeValue(forKey: trackID)
         } catch {
             errorMessage = "设施确认失败，请稍后重试。"
         }

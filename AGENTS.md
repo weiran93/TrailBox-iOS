@@ -308,6 +308,8 @@ ITRA_SEARCH_API_KEY=...
 
 后端实现位于关联仓库 `/Users/zhaoweiran/projects/TrailBox/api/app/routers/route_intelligence.py` 和 `services/route_intelligence.py`。自动路线分析是可解释的确定性计算；天气来源为 Open-Meteo。MapKit 自动发现的设施在贡献者确认前只能标为「地图信息」，不要表述为已核实的补水或安全设施。
 
+路线智能后端已于 2026-07-13 部署到 `runfast.fun`。部署后必须确认这些路径返回 `application/json`；若得到状态 200 但内容是 `text/html`，说明请求落入了 PWA SPA fallback，App 会因解码失败而只显示本地 MapKit 设施。
+
 ---
 
 ## 6. 状态管理指南

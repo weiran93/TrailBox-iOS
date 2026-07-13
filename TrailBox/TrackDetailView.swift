@@ -219,6 +219,7 @@ struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = TrackDetailViewModel()
     @StateObject private var routeIntelligence = RouteIntelligenceStore()
     @StateObject private var voiceRecorder = FeelingRecorder()
@@ -443,23 +444,25 @@ struct TrackDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { detailActions(track) }
         .task(id: track.id) {
             guard isPublicSource else { return }
-            await routeIntelligence.discoverNearbyPOIs(points: track.points)
+            await routeIntelligence.discoverNearbyPOIs(trackID: track.id, points: track.points)
         }
     }
 
     @ViewBuilder
     private func routeIntelligenceSections(_ track: Track) -> some View {
         if routeIntelligence.isLoading && routeIntelligence.analysis == nil {
+            routeSkeletonCard(title: "正在生成路线分析", rows: 3)
+                .padding(.horizontal, 16)
+                .transition(.opacity)
+        } else if routeIntelligence.analysis == nil, let message = routeIntelligence.errorMessage {
             SectionCard {
-                HStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text("正在生成路线分析…")
-                        .font(.subheadline)
-                        .foregroundStyle(TrailBoxColor.secondaryText)
-                }
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.subheadline)
+                    .foregroundStyle(TrailBoxColor.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
-
+            .transition(.opacity)
         }
 
         if let fit = routeIntelligence.personalFit {
@@ -571,12 +574,28 @@ struct TrackDetailView: View {
         if let weather = routeIntelligence.weather {
             weatherCard(weather)
                 .padding(.horizontal, 16)
+                .transition(.opacity)
+        } else if routeIntelligence.isLoading {
+            routeSkeletonCard(title: "正在获取路线天气", rows: 2)
+                .padding(.horizontal, 16)
+                .transition(.opacity)
         }
 
-        if !routeIntelligence.pois.isEmpty || !routeIntelligence.discoveredPOIs.isEmpty {
-            SectionCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("沿途设施").font(.headline)
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("沿途设施").font(.headline)
+                if (routeIntelligence.isLoadingPOIs || routeIntelligence.isDiscoveringPOIs)
+                    && routeIntelligence.pois.isEmpty
+                    && routeIntelligence.discoveredPOIs.isEmpty {
+                    RouteSkeletonRows(count: 3)
+                        .transition(.opacity)
+                } else if routeIntelligence.pois.isEmpty && routeIntelligence.discoveredPOIs.isEmpty {
+                    Label("路线附近暂未找到停车、厕所、补给或医院信息", systemImage: "mappin.slash")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
+                } else {
                     ForEach(routeIntelligence.pois.prefix(6)) { poi in
                         HStack(spacing: 10) {
                             Image(systemName: poiIcon(poi.type))
@@ -611,38 +630,40 @@ struct TrackDetailView: View {
                                 .foregroundStyle(TrailBoxColor.secondaryText)
                         }
                     }
-                    if routeIntelligence.analysis?.canManage == true, let token = session.token, !routeIntelligence.discoveredPOIs.isEmpty {
-                        Divider()
-                        Button {
-                            Task {
-                                await routeIntelligence.confirmDiscoveredPOIs(trackID: track.id, token: token)
-                            }
-                        } label: {
-                            HStack {
-                                if routeIntelligence.isSavingPOIs {
-                                    ProgressView().controlSize(.small)
-                                } else {
-                                    Image(systemName: "checkmark.seal.fill")
-                                }
-                                Text(routeIntelligence.isSavingPOIs ? "正在保存…" : "确认并保存这些设施")
-                                Spacer()
-                            }
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(TrailBoxColor.primaryDark)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(routeIntelligence.isSavingPOIs)
-                    }
-                    if let message = routeIntelligence.errorMessage, routeIntelligence.analysis != nil {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(TrailBoxColor.danger)
-                    }
-                    sourceFootnote("地图数据与跑友确认")
                 }
+                if routeIntelligence.analysis?.canManage == true, let token = session.token, !routeIntelligence.discoveredPOIs.isEmpty {
+                    Divider()
+                    Button {
+                        Task {
+                            await routeIntelligence.confirmDiscoveredPOIs(trackID: track.id, token: token)
+                        }
+                    } label: {
+                        HStack {
+                            if routeIntelligence.isSavingPOIs {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "checkmark.seal.fill")
+                            }
+                            Text(routeIntelligence.isSavingPOIs ? "正在保存…" : "确认并保存这些设施")
+                            Spacer()
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(routeIntelligence.isSavingPOIs)
+                }
+                if let message = routeIntelligence.errorMessage, routeIntelligence.analysis != nil {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.danger)
+                }
+                sourceFootnote("地图数据与跑友确认")
             }
-            .padding(.horizontal, 16)
         }
+        .padding(.horizontal, 16)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: routeIntelligence.isDiscoveringPOIs)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: routeIntelligence.pois.count + routeIntelligence.discoveredPOIs.count)
 
         if !routeIntelligence.conditions.isEmpty {
             SectionCard {
@@ -746,6 +767,20 @@ struct TrackDetailView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
+    }
+
+    private func routeSkeletonCard(title: String, rows: Int) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+                RouteSkeletonRows(count: rows)
+            }
+        }
     }
 
     private func weatherCard(_ weather: RouteWeather) -> some View {
@@ -1130,6 +1165,40 @@ struct TrackDetailView: View {
         guard let token = session.token else { return }
         isAnalyzing = true
         Task { do { let result: AIAnalysisResponse = try await APIClient.shared.request("/tracks/\(track.id)/ai-analysis", method: "POST", body: AIAnalysisRequest(userFeeling: feeling), token: token); aiAnalysis = result.analysis; aiAnalysisRaw = result.rawAnalysis } catch { actionError = error.localizedDescription }; isAnalyzing = false }
+    }
+}
+
+private struct RouteSkeletonRows: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isPulsing = false
+    let count: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(0..<count, id: \.self) { index in
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(TrailBoxColor.border.opacity(0.75))
+                        .frame(width: 24, height: 24)
+                    VStack(alignment: .leading, spacing: 6) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(TrailBoxColor.border.opacity(0.8))
+                            .frame(width: CGFloat(172 - index * 12), height: 10)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(TrailBoxColor.border.opacity(0.55))
+                            .frame(width: CGFloat(112 + index * 8), height: 8)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .opacity(isPulsing ? 0.5 : 1)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1).repeatCount(2, autoreverses: true)) {
+                isPulsing = true
+            }
+        }
     }
 }
 
