@@ -19,7 +19,7 @@
 - 最低系统：iOS 16.0。
 - 设备：仅 iPhone，`TARGETED_DEVICE_FAMILY = 1`。
 - 生命周期：纯 SwiftUI App，入口为 `TrailBox/TrailBoxApp.swift`。
-- `SessionStore`、`DeepLinkRouter`、`SavedRoutesStore` 在 app 入口注入为 environment object。
+- `SessionStore`、`DeepLinkRouter`、`SavedRoutesStore`、`DeparturePlanStore` 在 app 入口注入为 environment object。
 - 根导航使用系统 `TabView`；iOS 26 自动采用 Liquid Glass Tab Bar，iOS 16–25 保持对应系统原生样式。详情页隐藏底栏，探索、运动记录和「我的」三个根页面按导航路径显式恢复底栏可见，避免返回后继承隐藏状态。
 - `TrailBox/DesignSystem.swift` 提供统一的 `trailBoxGlass(...)` 修饰器和 `FloatingActionBar`：iOS 26 使用原生 `glassEffect`，iOS 16–25 使用系统 Material 回退；玻璃效果优先用于导航和悬浮操作层，内容卡片保持实体表面，页面底部主操作复用公共操作栏布局。
 - 当前视觉语言为「山野地图 + Liquid Glass」：基础色使用森林绿、苔藓绿与暖米色，页面背景可使用低对比度等高线纹理；玻璃效果不覆盖主要内容卡片，路线数据和长文本继续使用高对比度实体表面。探索卡片以轨迹图、路线负荷和距离/累计爬升/爬升密度组成决策层级；公开路线详情首屏将地图、名称和位置合并为 Hero，并紧接四项路线概览与基于既有智能数据汇总的「出发决策」，详细内容使用概览/分析/设施/跑友/剖面吸顶分段导航，原始来源卡片继续保留。运动记录根页使用训练总览 Hero 和轨迹记录卡片；「我的」根页在个人 Hero 中汇总收藏、贡献和 ITRA，并在收藏与贡献预览中直接展示轨迹。
@@ -31,6 +31,7 @@
 - 公开路线详情已接入路线智能层：`RouteIntelligenceStore` 并发加载难度与路线形态、预计用时、补给装备建议、动态天气与日落、沿途设施、近期路况、跑友评价、完成记录和登录用户的个性化适配。贡献者可确认 MapKit 搜索到的设施，运动记录上传后会自动匹配已公开路线。
 - 路线智能后端位于关联仓库的 `api/app/routers/route_intelligence.py` 与 `api/app/services/route_intelligence.py`，已于 2026-07-13 部署到 `runfast.fun`。路线分析为可解释的确定性计算；天气来源为 Open-Meteo，15 分钟内存缓存；沿途设施来源和更新时间必须在 UI 中明确标注，不能把地图检索结果表述为已核实的补水点。
 - 路线智能信息采用渐进加载：分析、天气和设施各自完成后立即更新；设施检索期间保持固定骨架占位，并在进程内缓存 MapKit 结果，避免卡片延迟插入造成页面跳动。分析和天气有独立的加载、失败与重试状态，不能因单项请求失败而静默隐藏整块内容。
+- 登录用户可在公开路线详情根据路线分析、个性化适配、天气、日落、近期路况和设施信息生成「出发计划」。`TrailBox/DeparturePlanStore.swift` 按用户将计划保存在 UserDefaults，计划包含建议出发时间、预计完成区间、最晚安全出发时间、风险摘要和可勾选准备清单；「我的」页提供最近计划预览与完整列表。计划属于本地辅助建议，设施未核实状态和安全免责说明必须保留。
 - ITRA 详情依赖后端公开资料解析接口：`GET /integrations/itra/profile/{runner_id}` 和 `POST /integrations/itra/profile/parse-html`。如果服务器抓取公开页只得到 partial，iOS 会尝试原生拉取公开 HTML 后提交后端 parser 兜底。
 
 ## 关键命令

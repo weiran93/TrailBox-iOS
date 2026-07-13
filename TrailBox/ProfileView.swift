@@ -23,6 +23,7 @@ final class ContributionViewModel: ObservableObject {
 struct ProfileView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
+    @EnvironmentObject private var departurePlans: DeparturePlanStore
     @Binding var showAuthentication: Bool
 
     @StateObject private var itraViewModel = ITRAProfileViewModel()
@@ -30,6 +31,8 @@ struct ProfileView: View {
     @State private var navigationPath: [ProfileDestination] = []
 
     private enum ProfileDestination: Hashable {
+        case departurePlans
+        case departurePlan(UUID)
         case contributions
         case savedRoutes
         case itraProfile
@@ -60,6 +63,18 @@ struct ProfileView: View {
             }
             .navigationDestination(for: ProfileDestination.self) { destination in
                 switch destination {
+                case .departurePlans:
+                    DeparturePlansView { planID in
+                        navigationPath.append(.departurePlan(planID))
+                    }
+                case .departurePlan(let planID):
+                    if let plan = departurePlans.plan(id: planID) {
+                        DeparturePlanView(plan: plan, dismissOnSave: false) {
+                            navigationPath.append(.track(plan.trackID))
+                        }
+                    } else {
+                        EmptyStateView(title: "计划不存在", systemImage: "calendar.badge.exclamationmark", message: "这份出发计划可能已被删除。")
+                    }
                 case .contributions:
                     MyContributionsView(tracks: contributionViewModel.tracks) {
                         Task {
@@ -119,6 +134,12 @@ struct ProfileView: View {
                 userHeader
                     .padding(.top, 4)
 
+                profileSection(title: "出发计划", actionTitle: departurePlans.plans.isEmpty ? nil : "查看全部") {
+                    departurePlanPreview
+                } action: {
+                    navigationPath.append(.departurePlans)
+                }
+
                 profileSection(title: "收藏路线", actionTitle: savedRoutes.tracks.isEmpty ? nil : "查看全部") {
                     savedRoutesPreview
                 } action: {
@@ -145,6 +166,42 @@ struct ProfileView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
+    }
+
+    @ViewBuilder
+    private var departurePlanPreview: some View {
+        if let plan = featuredDeparturePlan {
+            Button {
+                navigationPath.append(.departurePlan(plan.id))
+            } label: {
+                DeparturePlanCard(plan: plan)
+            }
+            .buttonStyle(.plain)
+        } else {
+            SectionCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                        .frame(width: 44, height: 44)
+                        .background(TrailBoxColor.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("还没有出发计划")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.text)
+                        Text("在路线详情生成时间建议和准备清单。")
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                }
+            }
+        }
+    }
+
+    private var featuredDeparturePlan: DeparturePlan? {
+        let now = Date()
+        return departurePlans.plans.first { ($0.expectedFinishEnd ?? $0.plannedStart) >= now }
+            ?? departurePlans.plans.last
     }
 
     private var loginPrompt: some View {

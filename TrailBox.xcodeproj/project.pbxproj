@@ -17,6 +17,8 @@
 		A00000000000000000000031 /* SavedRoutesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000131 /* SavedRoutesStore.swift */; };
 		A00000000000000000000032 /* RouteIntelligenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000132 /* RouteIntelligenceStore.swift */; };
 		A00000000000000000000033 /* RouteFeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000133 /* RouteFeedbackView.swift */; };
+		A00000000000000000000034 /* DeparturePlanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000134 /* DeparturePlanStore.swift */; };
+		A00000000000000000000035 /* DeparturePlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000135 /* DeparturePlanView.swift */; };
 		A00000000000000000000007 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* DesignSystem.swift */; };
 		A00000000000000000000008 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000108 /* RootView.swift */; };
 		A00000000000000000000009 /* AuthenticationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000109 /* AuthenticationView.swift */; };
@@ -42,6 +44,8 @@
 		A00000000000000000000131 /* SavedRoutesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedRoutesStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000132 /* RouteIntelligenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteIntelligenceStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000133 /* RouteFeedbackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteFeedbackView.swift; sourceTree = "<group>"; };
+		A00000000000000000000134 /* DeparturePlanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeparturePlanStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000135 /* DeparturePlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeparturePlanView.swift; sourceTree = "<group>"; };
 		A00000000000000000000107 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		A00000000000000000000108 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		A00000000000000000000109 /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
@@ -90,6 +94,8 @@
 				A00000000000000000000131 /* SavedRoutesStore.swift */,
 				A00000000000000000000132 /* RouteIntelligenceStore.swift */,
 				A00000000000000000000133 /* RouteFeedbackView.swift */,
+				A00000000000000000000134 /* DeparturePlanStore.swift */,
+				A00000000000000000000135 /* DeparturePlanView.swift */,
 				A00000000000000000000107 /* DesignSystem.swift */,
 				A00000000000000000000108 /* RootView.swift */,
 				A00000000000000000000109 /* AuthenticationView.swift */,
@@ -193,6 +199,8 @@
 				A00000000000000000000031 /* SavedRoutesStore.swift in Sources */,
 				A00000000000000000000032 /* RouteIntelligenceStore.swift in Sources */,
 				A00000000000000000000033 /* RouteFeedbackView.swift in Sources */,
+				A00000000000000000000034 /* DeparturePlanStore.swift in Sources */,
+				A00000000000000000000035 /* DeparturePlanView.swift in Sources */,
 				A00000000000000000000007 /* DesignSystem.swift in Sources */,
 				A00000000000000000000008 /* RootView.swift in Sources */,
 				A00000000000000000000009 /* AuthenticationView.swift in Sources */,

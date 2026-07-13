@@ -260,6 +260,7 @@ private struct RouteDecisionSummary {
 struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
+    @EnvironmentObject private var departurePlans: DeparturePlanStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = TrackDetailViewModel()
@@ -280,6 +281,7 @@ struct TrackDetailView: View {
     @State private var showReport = false
     @State private var showRouteFeedback = false
     @State private var navigationDestination: NavigationDestination?
+    @State private var departurePlanDraft: DeparturePlan?
     @State private var selectedRouteSection: RouteDetailSection = .overview
     @Namespace private var routeSectionSelection
     let trackID: String
@@ -320,6 +322,11 @@ struct TrackDetailView: View {
                 providers: navigationProviders(for: destination),
                 selectProvider: { provider in openNavigation(provider, destination: destination) }
             )
+        }
+        .sheet(item: $departurePlanDraft) { plan in
+            NavigationStack {
+                DeparturePlanView(plan: plan, dismissOnSave: true)
+            }
         }
     }
 
@@ -903,10 +910,64 @@ struct TrackDetailView: View {
                 Label("实时汇总 · \(decision.sourceText)", systemImage: "checkmark.seal")
                     .font(.caption2)
                     .foregroundStyle(TrailBoxColor.secondaryText)
+
+                Button {
+                    openDeparturePlan(for: track)
+                } label: {
+                    HStack {
+                        Image(systemName: departurePlans.plan(for: track.id) == nil ? "calendar.badge.plus" : "calendar.badge.checkmark")
+                        Text(departurePlanButtonTitle(for: track))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 15)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(departurePlans.plan(for: track.id) == nil && isDeparturePlanLoading)
+                .opacity(departurePlans.plan(for: track.id) == nil && isDeparturePlanLoading ? 0.58 : 1)
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: decision.animationKey)
         .accessibilityElement(children: .contain)
+    }
+
+    private var isDeparturePlanLoading: Bool {
+        routeIntelligence.isLoadingAnalysis
+            || routeIntelligence.isLoadingWeather
+            || routeIntelligence.isLoadingPOIs
+    }
+
+    private func departurePlanButtonTitle(for track: Track) -> String {
+        if departurePlans.plan(for: track.id) != nil { return "查看出发计划" }
+        return isDeparturePlanLoading ? "正在整理计划信息" : "生成出发计划"
+    }
+
+    private func openDeparturePlan(for track: Track) {
+        guard session.isAuthenticated else {
+            session.requireAuthentication()
+            return
+        }
+        let existing = departurePlans.plan(for: track.id)
+        if isDeparturePlanLoading, let existing {
+            departurePlanDraft = existing
+            return
+        }
+        departurePlanDraft = DeparturePlanFactory.make(
+            track: track,
+            analysis: routeIntelligence.analysis,
+            personalFit: routeIntelligence.personalFit,
+            weather: routeIntelligence.weather,
+            conditions: routeIntelligence.conditions,
+            pois: routeIntelligence.pois,
+            discoveredPOICount: routeIntelligence.discoveredPOIs.count,
+            existing: existing
+        )
     }
 
     private func routeDecision(for track: Track) -> RouteDecisionSummary {
