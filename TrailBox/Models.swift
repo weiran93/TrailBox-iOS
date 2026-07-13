@@ -53,6 +53,7 @@ struct Track: Codable, Identifiable, Equatable {
     let sport: String?
     let isPublic: Bool
     let showContributor: Bool
+    let recommendationReason: String?
     let contributorName: String?
     let contributorPublicID: String?
     let points: [TrackPoint]
@@ -63,6 +64,7 @@ struct Track: Codable, Identifiable, Equatable {
         case id, name, description, city, tags, sport, points
         case userID = "user_id"; case distanceM = "distance_m"; case elevationGainM = "elevation_gain_m"; case elevationLossM = "elevation_loss_m"
         case durationSec = "duration_sec"; case startTime = "start_time"; case isPublic = "is_public"; case showContributor = "show_contributor"
+        case recommendationReason = "recommendation_reason"
         case contributorName = "contributor_name"; case contributorPublicID = "contributor_public_id"; case createdAt = "created_at"; case aiAnalysisText = "ai_analysis_text"
     }
 
@@ -84,6 +86,7 @@ struct Track: Codable, Identifiable, Equatable {
         sport = try container.decodeIfPresent(String.self, forKey: .sport)
         isPublic = try container.decode(Bool.self, forKey: .isPublic)
         showContributor = try container.decode(Bool.self, forKey: .showContributor)
+        recommendationReason = try container.decodeIfPresent(String.self, forKey: .recommendationReason)
         contributorName = try container.decodeIfPresent(String.self, forKey: .contributorName)
         contributorPublicID = try container.decodeIfPresent(String.self, forKey: .contributorPublicID)
         points = try container.decodeIfPresent([TrackPoint].self, forKey: .points) ?? []
@@ -92,6 +95,21 @@ struct Track: Codable, Identifiable, Equatable {
     }
 
     var tagList: [String] { (tags ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
+}
+
+struct TrackBox: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let description: String?
+    let isPublic: Bool
+    let createdAt: Date?
+    let tracks: [Track]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, tracks
+        case isPublic = "is_public"
+        case createdAt = "created_at"
+    }
 }
 
 struct ConfiguredTag: Codable, Identifiable { let id: Int; let name: String; let sortOrder: Int; enum CodingKeys: String, CodingKey { case id, name; case sortOrder = "sort_order" } }
@@ -153,9 +171,265 @@ struct AdminBatchCommitItem: Encodable {
 
 struct TrackMetadataSuggestion: Codable {
     let name: String?
+    let nameCandidates: [String]?
     let city: String?
     let tags: [String]?
     let sport: String?
+    let distanceM: Double?
+    let elevationGainM: Double?
+    let durationSec: Double?
+    let points: [TrackPoint]?
+
+    enum CodingKeys: String, CodingKey {
+        case name, city, tags, sport, points
+        case nameCandidates = "name_candidates"
+        case distanceM = "distance_m"
+        case elevationGainM = "elevation_gain_m"
+        case durationSec = "duration_sec"
+    }
+}
+
+struct RouteAnalysis: Codable, Equatable {
+    struct Preparation: Codable, Equatable {
+        let recommendedWaterL: Double?
+        let recommendedSupplyCount: Int?
+        let headlampRecommended: Bool?
+        let equipment: [String]
+        let safetyNotes: [String]
+
+        enum CodingKeys: String, CodingKey {
+            case equipment
+            case recommendedWaterL = "recommended_water_l"; case recommendedSupplyCount = "recommended_supply_count"
+            case headlampRecommended = "headlamp_recommended"; case safetyNotes = "safety_notes"
+        }
+    }
+
+    let trackID: String
+    let routeType: String
+    let difficultyScore: Double
+    let difficultyLevel: String
+    let fitnessScore: Double
+    let elevationScore: Double
+    let estimatedDurationMin: Int?
+    let estimatedDurationMax: Int?
+    let highestElevationM: Double?
+    let lowestElevationM: Double?
+    let maximumGradePercent: Double?
+    let averageClimbGradePercent: Double?
+    let longestClimbDistanceM: Double?
+    let longestClimbGainM: Double?
+    let hardestSegmentStartM: Double?
+    let hardestSegmentEndM: Double?
+    let ascentRatio: Double?
+    let descentRatio: Double?
+    let flatRatio: Double?
+    let features: [String]
+    let preparation: Preparation?
+    let source: String
+    let updatedAt: Date
+    let canManage: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case features, preparation, source
+        case trackID = "track_id"; case routeType = "route_type"
+        case difficultyScore = "difficulty_score"; case difficultyLevel = "difficulty_level"
+        case fitnessScore = "fitness_score"; case elevationScore = "elevation_score"
+        case estimatedDurationMin = "estimated_duration_min"; case estimatedDurationMax = "estimated_duration_max"
+        case highestElevationM = "highest_elevation_m"; case lowestElevationM = "lowest_elevation_m"
+        case maximumGradePercent = "maximum_grade_percent"; case averageClimbGradePercent = "average_climb_grade_percent"
+        case longestClimbDistanceM = "longest_climb_distance_m"; case longestClimbGainM = "longest_climb_gain_m"
+        case hardestSegmentStartM = "hardest_segment_start_m"; case hardestSegmentEndM = "hardest_segment_end_m"
+        case ascentRatio = "ascent_ratio"; case descentRatio = "descent_ratio"; case flatRatio = "flat_ratio"
+        case updatedAt = "updated_at"; case canManage = "can_manage"
+    }
+}
+
+struct RoutePersonalFit: Codable, Equatable {
+    let score: Double
+    let level: String
+    let reason: String
+    let longestDistanceM: Double
+    let largestGainM: Double
+    let estimatedDurationMin: Int?
+    let estimatedDurationMax: Int?
+    let source: String
+
+    enum CodingKeys: String, CodingKey {
+        case score, level, reason, source
+        case longestDistanceM = "longest_distance_m"; case largestGainM = "largest_gain_m"
+        case estimatedDurationMin = "estimated_duration_min"; case estimatedDurationMax = "estimated_duration_max"
+    }
+}
+
+struct RoutePOI: Codable, Identifiable, Equatable {
+    let id: Int
+    let type: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let distanceAlongRouteM: Double?
+    let distanceFromRouteM: Double?
+    let source: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, name, latitude, longitude, source, status
+        case distanceAlongRouteM = "distance_along_route_m"; case distanceFromRouteM = "distance_from_route_m"
+    }
+}
+
+struct RoutePOIInput: Encodable {
+    let type: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let distanceAlongRouteM: Double?
+    let distanceFromRouteM: Double?
+    let source: String
+}
+
+struct RouteCondition: Codable, Identifiable, Equatable {
+    let id: Int
+    let conditionType: String
+    let severity: String
+    let description: String?
+    let latitude: Double?
+    let longitude: Double?
+    let observedAt: Date
+    let expiresAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, severity, description, latitude, longitude
+        case conditionType = "condition_type"; case observedAt = "observed_at"; case expiresAt = "expires_at"
+    }
+}
+
+struct RouteReview: Codable, Identifiable, Equatable {
+    let id: Int
+    let difficultyRating: Int?
+    let sceneryRating: Int?
+    let navigationRating: Int?
+    let supplyRating: Int?
+    let signalRating: Int?
+    let isRecommended: Bool?
+    let comment: String?
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, comment
+        case difficultyRating = "difficulty_rating"; case sceneryRating = "scenery_rating"
+        case navigationRating = "navigation_rating"; case supplyRating = "supply_rating"
+        case signalRating = "signal_rating"; case isRecommended = "is_recommended"; case updatedAt = "updated_at"
+    }
+}
+
+struct RouteReviewSummary: Codable, Equatable {
+    let count: Int
+    let averages: [String: Double]
+    let items: [RouteReview]
+}
+
+struct RouteReviewInput: Encodable {
+    let difficultyRating: Int?
+    let sceneryRating: Int?
+    let navigationRating: Int?
+    let supplyRating: Int?
+    let signalRating: Int?
+    let isRecommended: Bool?
+    let comment: String?
+}
+
+struct RouteConditionInput: Encodable {
+    let conditionType: String
+    let severity: String
+    let description: String?
+}
+
+struct RouteMatch: Codable, Identifiable, Equatable {
+    let id: Int
+    let trackID: String
+    let routeName: String?
+    let activityID: String
+    let coverageRatio: Double
+    let direction: String
+    let matchType: String
+    let matchedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, direction
+        case trackID = "track_id"; case routeName = "route_name"; case activityID = "activity_id"; case coverageRatio = "coverage_ratio"
+        case matchType = "match_type"; case matchedAt = "matched_at"
+    }
+}
+
+struct RouteCompletionSummary: Codable, Equatable {
+    struct Recent: Codable, Equatable {
+        let matchedAt: Date
+        let coverageRatio: Double
+        let direction: String
+        let matchType: String
+        let durationSec: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case direction
+            case matchedAt = "matched_at"; case coverageRatio = "coverage_ratio"
+            case matchType = "match_type"; case durationSec = "duration_sec"
+        }
+    }
+
+    let count: Int
+    let averageDurationSec: Double?
+    let fastestDurationSec: Double?
+    let slowestDurationSec: Double?
+    let recent: [Recent]
+    let source: String
+
+    enum CodingKeys: String, CodingKey {
+        case count, recent, source
+        case averageDurationSec = "average_duration_sec"; case fastestDurationSec = "fastest_duration_sec"
+        case slowestDurationSec = "slowest_duration_sec"
+    }
+}
+
+struct RouteWeather: Codable, Equatable {
+    struct Current: Codable, Equatable {
+        let temperature: Double?
+        let apparentTemperature: Double?
+        let precipitation: Double?
+        let weatherCode: Int?
+        let windSpeed: Double?
+        let windGusts: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case precipitation
+            case temperature = "temperature_2m"; case apparentTemperature = "apparent_temperature"
+            case weatherCode = "weather_code"; case windSpeed = "wind_speed_10m"; case windGusts = "wind_gusts_10m"
+        }
+    }
+
+    struct Daily: Codable, Equatable {
+        let time: [String]?
+        let sunrise: [String]?
+        let sunset: [String]?
+        let temperatureMax: [Double]?
+        let temperatureMin: [Double]?
+        let precipitationProbabilityMax: [Int]?
+        let windSpeedMax: [Double]?
+
+        enum CodingKeys: String, CodingKey {
+            case time, sunrise, sunset
+            case temperatureMax = "temperature_2m_max"; case temperatureMin = "temperature_2m_min"
+            case precipitationProbabilityMax = "precipitation_probability_max"; case windSpeedMax = "wind_speed_10m_max"
+        }
+    }
+
+    let current: Current
+    let daily: Daily
+    let timezone: String?
+    let source: String
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey { case current, daily, timezone, source; case updatedAt = "updated_at" }
 }
 
 struct ITRAProfile: Codable, Equatable {

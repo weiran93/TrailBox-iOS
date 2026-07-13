@@ -31,6 +31,19 @@
     <string>用于将分享卡保存到你的相册。</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>用于将你的运动体感语音转成文字。</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>127.0.0.1</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSIncludesSubdomains</key>
+                <false/>
+            </dict>
+        </dict>
+    </dict>
     <key>UILaunchScreen</key>
     <dict/>
 </dict>

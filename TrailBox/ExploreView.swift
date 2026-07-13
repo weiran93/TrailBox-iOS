@@ -67,19 +67,18 @@ final class ExploreViewModel: ObservableObject {
 
 struct ExploreView: View {
     @EnvironmentObject private var session: SessionStore
-    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
+    @EnvironmentObject private var savedRoutes: SavedRoutesStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = ExploreViewModel()
     @State private var showFilters = false
+    @State private var showContributeSheet = false
+    @State private var pendingContributeAfterAuthentication = false
+    @State private var pendingSavedTrackID: String?
     @State private var navigationPath: [String] = []
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("探索路线").font(.title2.bold()).foregroundStyle(TrailBoxColor.text)
-                    Spacer()
-                }.padding(.horizontal, 16).frame(height: 56).background(.white)
+            Group {
                 switch viewModel.state {
                 case .loading: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .empty: EmptyStateView(title: "暂无公开轨迹", systemImage: "map", message: "成为第一个上传公开路线的人吧")
@@ -88,27 +87,67 @@ struct ExploreView: View {
                 }
             }
             .background(TrailBoxColor.background)
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("探索路线")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $viewModel.keyword, prompt: "搜索路线、城市、标签")
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { showFilters = true } label: {
+                        Label("筛选", systemImage: "line.3.horizontal.decrease")
+                    }
+                    Button { openContribution() } label: {
+                        Label("贡献", systemImage: "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .background(TrailBoxColor.primaryDark, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             .task { await viewModel.load(token: session.token) }
             .sheet(isPresented: $showFilters) { ExploreFilterSheet(viewModel: viewModel) }
-            .navigationDestination(for: String.self) { trackID in
-                TrackDetailView(trackID: trackID, isPublicSource: true)
+            .sheet(isPresented: $showContributeSheet) {
+                NavigationStack {
+                    ContributeRouteView { _ in
+                        Task { await viewModel.load(token: session.token, isRefresh: true) }
+                    }
+                }
             }
+            .navigationDestination(for: String.self) { trackID in
+                TrackDetailView(
+                    trackID: trackID,
+                    isPublicSource: true,
+                    onDeleted: { await viewModel.load(token: session.token, isRefresh: true) },
+                    onSaved: { await viewModel.load(token: session.token, isRefresh: true) }
+                )
+            }
+            .onChange(of: session.isAuthenticated) { isAuthenticated in
+                guard isAuthenticated else { return }
+                if pendingContributeAfterAuthentication {
+                    pendingContributeAfterAuthentication = false
+                    showContributeSheet = true
+                }
+                if let trackID = pendingSavedTrackID, let token = session.token {
+                    pendingSavedTrackID = nil
+                    Task { await savedRoutes.toggle(trackID: trackID, token: token) }
+                }
+            }
+        }
+    }
+
+    private func openContribution() {
+        if session.isAuthenticated {
+            showContributeSheet = true
+        } else {
+            pendingContributeAfterAuthentication = true
+            showAuthentication = true
         }
     }
 
     private var content: some View {
         List {
-            Section {
-                HStack(spacing: 10) {
-                    HStack { Image(systemName: "magnifyingglass").foregroundStyle(TrailBoxColor.secondaryText); TextField("搜索路线、城市、标签", text: $viewModel.keyword).font(.subheadline) }.padding(.horizontal, 12).frame(height: 40).background(.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(TrailBoxColor.border))
-                    Button { showFilters = true } label: { Image(systemName: "line.3.horizontal.decrease.circle").font(.title3).frame(width: 40, height: 40).background(.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(TrailBoxColor.border)) }
-                }.padding(.horizontal, 16)
-            }
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-
             if !viewModel.tags.isEmpty {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -133,8 +172,12 @@ struct ExploreView: View {
                 .listRowSeparator(.hidden)
             } else {
                 ForEach(viewModel.filteredTracks) { track in
-                    Button { navigationPath.append(track.id) } label: { TrackCard(track: track, isActivity: false) }
-                        .buttonStyle(.plain)
+                    ZStack(alignment: .topTrailing) {
+                        Button { navigationPath.append(track.id) } label: { TrackCard(track: track, isActivity: false) }
+                            .buttonStyle(.plain)
+                        savedRouteButton(track.id)
+                            .padding(12)
+                    }
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -152,16 +195,34 @@ struct ExploreView: View {
         .refreshable { @MainActor in
             await viewModel.load(token: session.token, isRefresh: true)
         }
-        // Inset the scrollable content so it remains visible above the custom bottom bar.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: RootView.bottomBarHeight)
+    }
+
+    private func savedRouteButton(_ trackID: String) -> some View {
+        Button {
+            guard let token = session.token else {
+                pendingSavedTrackID = trackID
+                showAuthentication = true
+                return
+            }
+            Task { await savedRoutes.toggle(trackID: trackID, token: token) }
+        } label: {
+            Image(systemName: savedRoutes.isSaved(trackID) ? "bookmark.fill" : "bookmark")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(savedRoutes.isSaved(trackID) ? TrailBoxColor.primaryDark : TrailBoxColor.text)
+                .frame(width: 40, height: 40)
         }
+        .buttonStyle(.borderless)
+        .trailBoxGlass(interactive: !savedRoutes.savingTrackIDs.contains(trackID), in: Circle())
+        .contentShape(Circle())
+        .zIndex(2)
+        .disabled(savedRoutes.savingTrackIDs.contains(trackID))
+        .accessibilityLabel(savedRoutes.isSaved(trackID) ? "取消收藏路线" : "收藏路线")
     }
 
     private func tagButton(_ title: String, tag: String?) -> some View {
         Button(title) { viewModel.selectedTag = tag }
             .font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 7)
-            .background(viewModel.selectedTag == tag ? TrailBoxColor.primary : .white)
+            .background(viewModel.selectedTag == tag ? TrailBoxColor.primary : TrailBoxColor.surface)
             .foregroundStyle(viewModel.selectedTag == tag ? .white : TrailBoxColor.text)
             .clipShape(Capsule()).overlay(Capsule().stroke(viewModel.selectedTag == tag ? TrailBoxColor.primary : TrailBoxColor.border))
     }
@@ -207,7 +268,7 @@ struct TrackCard: View {
                 HStack(spacing: 0) { exploreStat(DisplayFormat.distance(track.distanceM), "距离", TrailBoxColor.text); exploreStat(compactElevation(track.elevationGainM), "爬升", TrailBoxColor.primary); exploreStat(compactElevation(track.elevationLossM), "下降", .orange) }
             }.padding(16)
         }
-        .background(.white).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(TrailBoxColor.surface).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
     }
 
@@ -238,6 +299,7 @@ struct TrackCard: View {
 
     private var subtitle: String {
         if isActivity { return DisplayFormat.date(track.startTime ?? track.createdAt) }
+        guard track.showContributor else { return "" }
         return "贡献者 " + (track.contributorName ?? track.contributorPublicID ?? "小野box 用户")
     }
     private var activityDateAndSport: String { subtitle + (track.sport.map { " · \($0)" } ?? "") }

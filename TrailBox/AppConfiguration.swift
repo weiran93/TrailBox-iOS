@@ -12,9 +12,6 @@ enum AppConfiguration {
            let url = URL(string: arguments[index + 1]) {
             return url
         }
-        // Physical iPhones cannot reach a development server through 127.0.0.1:
-        // that address refers to the phone itself. Use the deployed API by default;
-        // Xcode launch arguments can still override this for LAN/local development.
         return URL(string: "https://runfast.fun")!
     }
 }

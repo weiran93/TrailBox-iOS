@@ -90,54 +90,35 @@ final class ITRAProfileDetailViewModel: ObservableObject {
 
 struct MyTracksView: View {
     @EnvironmentObject private var session: SessionStore
-    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     @Binding var showAuthentication: Bool
     @StateObject private var viewModel = MyTracksViewModel()
-    @StateObject private var itraViewModel = ITRAProfileViewModel()
-    @State private var showSettings = false
     @State private var navigationPath: [Destination] = []
     @State private var statsRange: StatsRange = .month
 
     private enum StatsRange: String, CaseIterable, Identifiable { case month = "本月", all = "全部"; var id: String { rawValue } }
-    private enum Destination: Hashable { case upload, track(String), itraProfile }
+    private enum Destination: Hashable { case upload, track(String) }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("我的记录").font(.title2.bold()).foregroundStyle(TrailBoxColor.text)
-                    Spacer()
-                    Button {
-                        bottomBarVisibility.isVisible = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            navigationPath.append(Destination.upload)
-                        }
-                    } label: { Text("上传记录").font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.primaryDark) }
-                    Button { showSettings = true } label: { Image(systemName: "gearshape").foregroundStyle(TrailBoxColor.text).padding(.leading, 12) }
-                }.padding(.horizontal, 16).frame(height: 56).background(.white)
+            Group {
                 switch viewModel.state {
                 case .loading: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .empty:
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            itraProfileCard
                             EmptyStateView(title: "还没有轨迹", systemImage: "figure.run", message: "从运动 App 分享 .fit 或 .gpx 文件到小野box")
                                 .frame(minHeight: 260)
                         }
                         .padding(16)
                     }
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        Color.clear.frame(height: RootView.bottomBarHeight)
-                    }
                 case .failed(let message): EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: message)
                 case .content:
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            itraProfileCard
                             summary
                             ForEach(viewModel.tracks) { track in
                                 NavigationLink {
-                                    TrackDetailView(trackID: track.id, isPublicSource: false, onDeleted: refreshTracks)
+                                    TrackDetailView(trackID: track.id, isPublicSource: false, onDeleted: refreshTracks, onSaved: refreshTracks)
                                 } label: {
                                     TrackCard(track: track, isActivity: true)
                                 }
@@ -154,20 +135,31 @@ struct MyTracksView: View {
                         }
                         .padding(16)
                     }
-                    // Inset the scrollable content so it remains visible above the custom bottom bar.
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        Color.clear.frame(height: RootView.bottomBarHeight)
-                    }
                 }
-            }.background(TrailBoxColor.background).toolbar(.hidden, for: .navigationBar)
+            }
+            .background(TrailBoxColor.background)
+            .navigationTitle("运动记录")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        navigationPath.append(Destination.upload)
+                    } label: {
+                        Label("上传", systemImage: "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .background(TrailBoxColor.primaryDark, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
                 .task(id: session.token) {
                     if let token = session.token {
-                        async let tracks: Void = viewModel.load(token: token)
-                        async let itra: Void = itraViewModel.load(token: token)
-                        _ = await (tracks, itra)
+                        await viewModel.load(token: token)
                     }
                 }
-                .sheet(isPresented: $showSettings) { SettingsView() }
                 .navigationDestination(for: Destination.self) { destination in
                     switch destination {
                     case .upload:
@@ -176,32 +168,10 @@ struct MyTracksView: View {
                             navigationPath = [.track(track.id)]
                         }
                     case .track(let trackID):
-                        TrackDetailView(trackID: trackID, isPublicSource: false, onDeleted: refreshTracks)
-                    case .itraProfile:
-                        if let profile = itraViewModel.profile {
-                            ITRAProfileDetailView(profile: profile) {
-                                itraViewModel.setProfile(nil)
-                            }
-                        } else {
-                            ITRAProfileLookupView(profile: itraViewModel.profile) { profile in
-                                itraViewModel.setProfile(profile)
-                            }
-                        }
+                        TrackDetailView(trackID: trackID, isPublicSource: false, onDeleted: refreshTracks, onSaved: refreshTracks)
                     }
                 }
         }
-        .onChange(of: navigationPath) { newValue in
-            bottomBarVisibility.isVisible = newValue.isEmpty
-        }
-    }
-
-    private var itraProfileCard: some View {
-        Button {
-            navigationPath.append(.itraProfile)
-        } label: {
-            ITRAProfileCard(profile: itraViewModel.profile, isLoading: itraViewModel.isLoading)
-        }
-        .buttonStyle(.plain)
     }
 
     private var summary: some View {
@@ -221,6 +191,7 @@ struct MyTracksView: View {
             }
         }
     }
+
     private var filteredForStatistics: [Track] {
         guard statsRange == .month else { return viewModel.tracks }
         let calendar = Calendar.current
@@ -234,7 +205,48 @@ struct MyTracksView: View {
     }
 }
 
-private struct ITRAProfileCard: View {
+struct MyContributionsView: View {
+    let tracks: [Track]
+    let onRefresh: () async -> Void
+
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if tracks.isEmpty {
+                    EmptyStateView(
+                        title: "还没有贡献的路线",
+                        systemImage: "square.and.arrow.up",
+                        message: "在探索页面点击「贡献路线」，上传你的第一条公开路线。"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else {
+                    ForEach(tracks) { track in
+                        NavigationLink {
+                            TrackDetailView(
+                                trackID: track.id,
+                                isPublicSource: true,
+                                onDeleted: { await onRefresh() },
+                                onSaved: { await onRefresh() }
+                            )
+                        } label: {
+                            TrackCard(track: track, isActivity: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .background(TrailBoxColor.background)
+        .navigationTitle("我贡献的路线")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct ITRAProfileCard: View {
     let profile: ITRAProfile?
     let isLoading: Bool
 
@@ -681,7 +693,7 @@ struct ITRAProfileDetailView: View {
                         Text(flagEmoji(detail.profile.nationality))
                             .font(.title3)
                             .frame(width: 28, height: 28)
-                            .background(.white)
+                            .background(TrailBoxColor.surface)
                             .clipShape(Circle())
                     }
                     VStack(alignment: .leading, spacing: 8) {
@@ -697,17 +709,21 @@ struct ITRAProfileDetailView: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(TrailBoxColor.text)
                         HStack(spacing: 0) {
-                            Text("表现分：\(detail.profile.performanceIndex.map(String.init) ?? "未公开")")
-                                .font(.headline.weight(.bold))
+                            Text("表现分 \(detail.profile.performanceIndex.map(String.init) ?? "未公开")")
+                                .font(.subheadline.weight(.bold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .frame(height: 42)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                                .padding(.horizontal, 11)
+                                .frame(height: 38)
                                 .background(.black)
                             Text(detail.profile.publicLevel ?? "等级未公开")
-                                .font(.headline.weight(.bold))
+                                .font(.subheadline.weight(.bold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .frame(height: 42)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                                .padding(.horizontal, 11)
+                                .frame(height: 38)
                                 .background(TrailBoxColor.primary.opacity(0.7))
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
@@ -968,6 +984,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var showDeleteConfirmation = false
+    @State private var showLogoutConfirmation = false
     @State private var isDeletingAccount = false
     @State private var accountActionMessage: String?
 
@@ -976,73 +993,77 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ZStack {
-            NavigationStack {
-                Form {
-                    Section("用户信息") {
-                        LabeledContent("公开 ID", value: session.user?.publicID ?? "-")
-                        LabeledContent("用户名", value: session.user?.username ?? "-")
-                    }
-                    if session.user?.isAdmin == true {
-                        Section("管理后台") {
-                            NavigationLink("管理后台") { AdminDashboardView() }
-                            NavigationLink("AI 服务配置") { AdminAISettingsView() }
-                            NavigationLink("内容举报") { AdminReportsView() }
-                        }
-                    }
-                    Section("个人资料") {
-                        NavigationLink {
-                            NicknameSettingsView(nickname: session.user?.nickname ?? "")
-                        } label: {
-                            LabeledContent("昵称", value: session.user?.nickname ?? "未设置")
-                        }
-                    }
-                    Section("AI 分析") {
-                        NavigationLink {
-                            DeepSeekKeySettingsView()
-                        } label: {
-                            HStack {
-                                Text("DeepSeek API Key")
-                                Spacer()
-                                Text(session.user?.hasDeepSeekAPIKey == true ? "已保存" : "未配置")
-                                    .foregroundStyle(session.user?.hasDeepSeekAPIKey == true ? .green : TrailBoxColor.secondaryText)
-                            }
-                        }
-                    }
-                    Section("账户安全") {
-                        NavigationLink("修改密码") { ChangePasswordView() }
-                        Button("删除账户", role: .destructive) { showDeleteConfirmation = true }
-                    }
-                    Section {
-                        NavigationLink("隐私政策") { PrivacyPolicyView() }
-                        Button("联系我们") {
-                            if let url = URL(string: "mailto:\(AppConfiguration.supportEmail)") { openURL(url) }
-                        }
-                    } header: {
-                        Text("关于与支持")
-                    } footer: {
-                        HStack {
-                            Spacer()
-                            Text("v\(appVersion)").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
-                            Spacer()
-                        }
-                    }
-                    Section { Button("退出登录", role: .destructive) { session.logout(); dismiss() } }
-                }
-                .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
-                .confirmationDialog("永久删除账户？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-                    Button(isDeletingAccount ? "删除中…" : "删除账户及所有数据", role: .destructive) { deleteAccount() }
-                        .disabled(isDeletingAccount)
-                    Button("取消", role: .cancel) { }
-                } message: {
-                    Text("你的私有记录、已公开路线、轨迹文件和 AI 分析将被永久删除，且无法恢复。")
-                }
-                .alert("账户操作", isPresented: Binding(get: { accountActionMessage != nil }, set: { if !$0 { accountActionMessage = nil } })) {
-                    Button("确定", role: .cancel) { }
-                } message: { Text(accountActionMessage ?? "") }
+        Form {
+            Section("用户信息") {
+                LabeledContent("ID", value: session.user?.publicID ?? "-")
+                LabeledContent("用户名", value: session.user?.username ?? "-")
             }
+            if session.user?.isAdmin == true {
+                Section("管理后台") {
+                    NavigationLink("管理后台") { AdminDashboardView() }
+                    NavigationLink("AI 服务配置") { AdminAISettingsView() }
+                    NavigationLink("内容举报") { AdminReportsView() }
+                }
+            }
+            Section("个人资料") {
+                NavigationLink {
+                    NicknameSettingsView(nickname: session.user?.nickname ?? "")
+                } label: {
+                    LabeledContent("昵称", value: session.user?.nickname ?? "未设置")
+                }
+            }
+            Section("AI 分析") {
+                NavigationLink {
+                    DeepSeekKeySettingsView()
+                } label: {
+                    HStack {
+                        Text("DeepSeek API Key")
+                        Spacer()
+                        Text(session.user?.hasDeepSeekAPIKey == true ? "已保存" : "未配置")
+                            .foregroundStyle(session.user?.hasDeepSeekAPIKey == true ? .green : TrailBoxColor.secondaryText)
+                    }
+                }
+            }
+            Section("账户安全") {
+                NavigationLink("修改密码") { ChangePasswordView() }
+                Button("删除账户", role: .destructive) { showDeleteConfirmation = true }
+            }
+            Section {
+                NavigationLink("隐私政策") { PrivacyPolicyView() }
+                Button("联系我们") {
+                    if let url = URL(string: "mailto:\(AppConfiguration.supportEmail)") { openURL(url) }
+                }
+            } header: {
+                Text("关于与支持")
+            } footer: {
+                HStack {
+                    Spacer()
+                    Text("v\(appVersion)").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                    Spacer()
+                }
+            }
+
+            Section {
+                Button("退出登录", role: .destructive) { showLogoutConfirmation = true }
+                    .frame(maxWidth: .infinity)
+            }
+            .listRowBackground(Color.red.opacity(0.08))
         }
+        .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("永久删除账户？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+            Button(isDeletingAccount ? "删除中…" : "删除账户及所有数据", role: .destructive) { deleteAccount() }
+                .disabled(isDeletingAccount)
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("你的私有记录、已公开路线、轨迹文件和 AI 分析将被永久删除，且无法恢复。")
+        }
+        .confirmationDialog("退出登录？", isPresented: $showLogoutConfirmation, titleVisibility: .visible) {
+            Button("退出登录", role: .destructive) { session.logout(); dismiss() }
+            Button("取消", role: .cancel) { }
+        }
+        .alert("账户操作", isPresented: Binding(get: { accountActionMessage != nil }, set: { if !$0 { accountActionMessage = nil } })) {
+            Button("确定", role: .cancel) { }
+        } message: { Text(accountActionMessage ?? "") }
     }
 
     private func deleteAccount() {
@@ -1686,7 +1707,6 @@ struct AdminReportsView: View {
 
 struct UploadTrackView: View {
     @EnvironmentObject private var session: SessionStore
-    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
     let didUpload: (Track) -> Void
     @State private var showFileImporter = false
     @State private var selectedFile: URL?
@@ -1770,17 +1790,18 @@ struct UploadTrackView: View {
             .navigationTitle("上传记录").navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
                 let isDisabled = selectedFile == nil || isUploading || isSuggestingMetadata
-                Button(uploadButtonTitle) { if !isDisabled { upload() } }
-                    .font(.headline.weight(.bold)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).frame(height: 52)
-                    .background(isDisabled ? TrailBoxColor.secondaryText : TrailBoxColor.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: TrailBoxColor.primary.opacity(0.25), radius: 8, y: 4)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(.white)
-                    .overlay(alignment: .top) { Divider().overlay(TrailBoxColor.border) }
-                    .allowsHitTesting(!isDisabled)
-                    .ignoresSafeArea(.container, edges: .bottom)
+                FloatingActionBar {
+                    Button(uploadButtonTitle) { if !isDisabled { upload() } }
+                        .font(.headline.weight(.bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).frame(height: 52)
+                        .buttonStyle(.plain)
+                        .trailBoxGlass(
+                            tint: isDisabled ? TrailBoxColor.secondaryText.opacity(0.45) : TrailBoxColor.primary,
+                            interactive: !isDisabled,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .allowsHitTesting(!isDisabled)
+                }
             }
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: allowedFileTypes) { result in
                 guard case .success(let url) = result else { return }
@@ -1789,8 +1810,7 @@ struct UploadTrackView: View {
             if isUploading { uploadingOverlay }
         }
         .background(TrailBoxColor.background)
-        .onAppear { bottomBarVisibility.isVisible = false }
-        .onDisappear { bottomBarVisibility.isVisible = true }
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private func upload() {
@@ -1802,6 +1822,11 @@ struct UploadTrackView: View {
             do {
                 let submittedName = nameWasEdited ? name.trimmingCharacters(in: .whitespacesAndNewlines) : nil
                 let track = try await APIClient.shared.uploadTrack(fileURL: selectedFile, name: submittedName, city: city, tags: normalizedTags, sport: sport, isPublic: isPublic, showContributor: showContributor, token: token)
+                let _: [RouteMatch]? = try? await APIClient.shared.request(
+                    "/tracks/match-activity/\(track.id)",
+                    method: "POST",
+                    token: token
+                )
                 didUpload(track)
             } catch { errorMessage = error.localizedDescription }
             isUploading = false

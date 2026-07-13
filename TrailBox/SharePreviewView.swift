@@ -20,7 +20,6 @@ struct SharePreviewView: View {
             VStack(spacing: 18) {
                 preview
                 Spacer(minLength: 0)
-                actions
             }
             .padding(16)
             .background(TrailBoxColor.background)
@@ -30,6 +29,7 @@ struct SharePreviewView: View {
             .task { renderer.render(type: activeType, data: data) }
             .sheet(item: $shareImage) { ShareSheet(image: $0.image) }
             .alert("提示", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) { Button("确定", role: .cancel) {} } message: { Text(message ?? "") }
+            .safeAreaInset(edge: .bottom, spacing: 0) { actions }
         }
     }
 
@@ -54,11 +54,33 @@ struct SharePreviewView: View {
     }
 
     private var actions: some View {
-        HStack(spacing: 12) {
-            Button { if let image = renderer.image(for: activeType) { shareImage = ShareImage(image: image) } } label: { Label("分享", systemImage: "square.and.arrow.up").font(.headline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 62) }
-                .foregroundStyle(TrailBoxColor.text).background(.white).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(TrailBoxColor.border)).disabled(renderer.image(for: activeType) == nil)
-            Button { save() } label: { Label("保存图片", systemImage: "photo.on.rectangle").font(.headline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 62) }
-                .foregroundStyle(.white).background(TrailBoxColor.primary).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).shadow(color: TrailBoxColor.primary.opacity(0.25), radius: 8, y: 4).disabled(renderer.image(for: activeType) == nil)
+        let isDisabled = renderer.image(for: activeType) == nil
+        return FloatingActionBar {
+            HStack(spacing: 12) {
+                Button { if let image = renderer.image(for: activeType) { shareImage = ShareImage(image: image) } } label: {
+                    Label("分享", systemImage: "square.and.arrow.up")
+                        .font(.headline.weight(.bold))
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                }
+                .foregroundStyle(TrailBoxColor.text)
+                .buttonStyle(.plain)
+                .trailBoxGlass(interactive: !isDisabled, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .disabled(isDisabled)
+
+                Button { save() } label: {
+                    Label("保存图片", systemImage: "photo.on.rectangle")
+                        .font(.headline.weight(.bold))
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                }
+                .foregroundStyle(.white)
+                .buttonStyle(.plain)
+                .trailBoxGlass(
+                    tint: isDisabled ? TrailBoxColor.secondaryText.opacity(0.45) : TrailBoxColor.primary,
+                    interactive: !isDisabled,
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .disabled(isDisabled)
+            }
         }
     }
 

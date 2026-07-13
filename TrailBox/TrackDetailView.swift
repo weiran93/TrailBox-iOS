@@ -205,16 +205,22 @@ final class TrackDetailViewModel: ObservableObject {
     @Published var state: State = .loading
     func load(id: String, isPublic: Bool, token: String?) async {
         state = .loading
-        do { let path = isPublic ? "/tracks/\(id)/public" : "/tracks/\(id)"; state = .content(try await APIClient.shared.request(path, token: token)) }
+        do {
+            // 如果用户已登录，优先用 /tracks/{id}，它会返回 user_id（当当前用户是贡献者时），
+            // 这样公开路线的详情页也能判断是否是本人并显示删除入口。
+            let path = (isPublic && token == nil) ? "/tracks/\(id)/public" : "/tracks/\(id)"
+            state = .content(try await APIClient.shared.request(path, token: token))
+        }
         catch { state = .failed(ErrorMessage.display(error)) }
     }
 }
 
 struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
-    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
+    @EnvironmentObject private var savedRoutes: SavedRoutesStore
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = TrackDetailViewModel()
+    @StateObject private var routeIntelligence = RouteIntelligenceStore()
     @StateObject private var voiceRecorder = FeelingRecorder()
     @State private var showEdit = false
     @State private var showDeleteConfirmation = false
@@ -229,15 +235,18 @@ struct TrackDetailView: View {
     @State private var showFullscreenMap = false
     @State private var showSharePreview = false
     @State private var showReport = false
+    @State private var showRouteFeedback = false
     @State private var navigationDestination: NavigationDestination?
     let trackID: String
     let isPublicSource: Bool
     let onDeleted: (() async -> Void)?
+    let onSaved: (() async -> Void)?
 
-    init(trackID: String, isPublicSource: Bool, onDeleted: (() async -> Void)? = nil) {
+    init(trackID: String, isPublicSource: Bool, onDeleted: (() async -> Void)? = nil, onSaved: (() async -> Void)? = nil) {
         self.trackID = trackID
         self.isPublicSource = isPublicSource
         self.onDeleted = onDeleted
+        self.onSaved = onSaved
     }
 
     var body: some View {
@@ -251,9 +260,15 @@ struct TrackDetailView: View {
         .background(TrailBoxColor.background)
         .navigationTitle(isPublicSource ? "轨迹详情" : "记录详情")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { bottomBarVisibility.isVisible = false }
-        .onDisappear { bottomBarVisibility.isVisible = true }
+        .toolbar(.hidden, for: .tabBar)
         .task(id: session.token) { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) }
+        .task(id: "\(trackID)-\(session.token ?? "guest")") {
+            if isPublicSource {
+                await routeIntelligence.load(trackID: trackID, token: session.token)
+            } else if let token = session.token {
+                await routeIntelligence.loadActivityMatches(activityID: trackID, token: token)
+            }
+        }
         .sheet(item: $navigationDestination) { destination in
             NavigationProviderSheet(
                 destinationName: destination.name,
@@ -261,6 +276,11 @@ struct TrackDetailView: View {
                 selectProvider: { provider in openNavigation(provider, destination: destination) }
             )
         }
+    }
+
+    private func isOwner(of track: Track) -> Bool {
+        guard let currentUserID = session.user?.id, let trackUserID = track.userID else { return false }
+        return currentUserID == trackUserID
     }
 
     private func details(_ track: Track) -> some View {
@@ -272,9 +292,22 @@ struct TrackDetailView: View {
                     VStack(alignment: .leading, spacing: 5) { Text(track.name).font(.title2.bold()).foregroundStyle(TrailBoxColor.text); if let description = track.description { Text(description).font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) } }.padding(.horizontal, 16).padding(.top, 8)
                 } else { activityHero(track).padding(.horizontal, 16).padding(.top, 8) }
                 if !isPublicSource { analysisCard(track) }
+                if !isPublicSource, !routeIntelligence.activityMatches.isEmpty {
+                    activityMatchesCard
+                        .padding(.horizontal, 16)
+                }
                 ZStack(alignment: .topTrailing) {
-                    TrackMap(points: track.points).frame(height: 280)
-                    Button { showFullscreenMap = true } label: { Image(systemName: "arrow.up.left.and.arrow.down.right").padding(10).background(.white.opacity(0.92)).clipShape(Circle()) }.padding(12)
+                    TrackMap(points: track.points, pois: routeMapPOIs).frame(height: 280)
+                    Button { showFullscreenMap = true } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(TrailBoxColor.text)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .trailBoxGlass(in: Circle())
+                    .padding(12)
                 }
                 if let start = track.points.first, let end = track.points.last {
                     HStack(spacing: 12) {
@@ -299,6 +332,7 @@ struct TrackDetailView: View {
                             difficultyMetric(metrics.difficulty)
                         }
                     }.padding(.horizontal, 16)
+                    routeIntelligenceSections(track)
                 }
                 ElevationChart(points: track.points, title: "海拔剖面").padding(.horizontal, 16)
                 if !isPublicSource {
@@ -307,6 +341,30 @@ struct TrackDetailView: View {
                     GradeChart(metrics: metrics).padding(.horizontal, 16)
                 }
                 if track.city != nil || !track.tagList.isEmpty { SectionCard { VStack(alignment: .leading, spacing: 10) { if let city = track.city { HStack { Text("城市").foregroundStyle(TrailBoxColor.secondaryText); Spacer(); Text(city).fontWeight(.semibold) } }; if !track.tagList.isEmpty { Divider(); VStack(alignment: .leading, spacing: 6) { Text("标签").font(.headline); Text(track.tagList.joined(separator: " · ")).font(.subheadline).foregroundStyle(TrailBoxColor.secondaryText) } } } }.padding(.horizontal, 16) }
+                if let reason = track.recommendationReason, !reason.isEmpty, isPublicSource {
+                    SectionCard {
+                        HStack(alignment: .top, spacing: 12) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(TrailBoxColor.primary.opacity(0.35))
+                                .frame(width: 3)
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(reason)
+                                    .font(.subheadline)
+                                    .lineSpacing(3)
+                                    .foregroundStyle(TrailBoxColor.text)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                if let contributor = track.contributorName, track.showContributor {
+                                    Text("—— \(contributor) 推荐")
+                                        .font(.caption)
+                                        .foregroundStyle(TrailBoxColor.secondaryText)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
             }.padding(.bottom, 24)
         }
         if isVoiceGestureActive && voiceRecorder.isRecording {
@@ -319,6 +377,19 @@ struct TrackDetailView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                if isPublicSource {
+                    Button {
+                        guard let token = session.token else {
+                            session.requireAuthentication()
+                            return
+                        }
+                        Task { await savedRoutes.toggle(trackID: track.id, token: token) }
+                    } label: {
+                        Image(systemName: savedRoutes.isSaved(track.id) ? "bookmark.fill" : "bookmark")
+                    }
+                    .disabled(savedRoutes.savingTrackIDs.contains(track.id))
+                    .accessibilityLabel(savedRoutes.isSaved(track.id) ? "取消收藏路线" : "收藏路线")
+                }
                 if !isPublicSource {
                     Menu {
                         Button("编辑记录") { showEdit = true }
@@ -326,20 +397,33 @@ struct TrackDetailView: View {
                     } label: { Image(systemName: "ellipsis") }
                 } else {
                     Menu {
-                        Button("举报路线", role: .destructive) {
-                            guard session.isAuthenticated else { session.requireAuthentication(); return }
-                            showReport = true
-                        }
-                        if let publicID = track.contributorPublicID {
-                            Button("屏蔽该贡献者", role: .destructive) { blockContributor(publicID) }
+                        if isOwner(of: track) {
+                            Button("编辑路线") { showEdit = true }
+                            Button("删除路线", role: .destructive) { showDeleteConfirmation = true }
+                        } else {
+                            Button("举报路线", role: .destructive) {
+                                guard session.isAuthenticated else { session.requireAuthentication(); return }
+                                showReport = true
+                            }
+                            if let publicID = track.contributorPublicID, track.showContributor {
+                                Button("屏蔽该贡献者", role: .destructive) { blockContributor(publicID) }
+                            }
                         }
                     } label: { Image(systemName: "ellipsis") }
                 }
             }
         }
-        .sheet(isPresented: $showEdit) { EditTrackView(track: track) { Task { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) } } }
+        .sheet(isPresented: $showEdit) {
+            EditTrackView(track: track) {
+                Task {
+                    await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token)
+                    await onSaved?()
+                }
+            }
+        }
         .sheet(item: $shareFile) { ActivityFileView(url: $0.url) }
-        .confirmationDialog("删除这条记录？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+        .alert(isPublicSource ? "删除这条路线？" : "删除这条记录？", isPresented: $showDeleteConfirmation) {
+            Button("取消", role: .cancel) {}
             Button("删除", role: .destructive) { delete(track) }
         } message: { Text("删除后不可恢复。") }
         .alert("删除成功", isPresented: $showDeleteSuccess) {
@@ -348,39 +432,475 @@ struct TrackDetailView: View {
             Text("该记录已删除。")
         }
         .alert("操作失败", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) { Button("确定", role: .cancel) {} } message: { Text(actionError ?? "") }
-        .sheet(isPresented: $showFullscreenMap) { NavigationStack { TrackMap(points: track.points).ignoresSafeArea(edges: .bottom).navigationTitle(track.name).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showFullscreenMap = false } } } } }
+        .sheet(isPresented: $showFullscreenMap) { NavigationStack { TrackMap(points: track.points, pois: routeMapPOIs).ignoresSafeArea(edges: .bottom).navigationTitle(track.name).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showFullscreenMap = false } } } } }
         .sheet(isPresented: $showSharePreview) { SharePreviewView(source: isPublicSource ? .exploreRoute : .activity, data: RouteShareData.make(from: track, source: isPublicSource ? .exploreRoute : .activity)) }
         .sheet(isPresented: $showReport) { ReportTrackView(trackID: track.id) }
+        .sheet(isPresented: $showRouteFeedback) {
+            RouteFeedbackView(trackID: track.id) {
+                await routeIntelligence.load(trackID: track.id, token: session.token)
+            }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) { detailActions(track) }
+        .task(id: track.id) {
+            guard isPublicSource else { return }
+            await routeIntelligence.discoverNearbyPOIs(points: track.points)
+        }
+    }
+
+    @ViewBuilder
+    private func routeIntelligenceSections(_ track: Track) -> some View {
+        if routeIntelligence.isLoading && routeIntelligence.analysis == nil {
+            SectionCard {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("正在生成路线分析…")
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+            }
+            .padding(.horizontal, 16)
+
+        }
+
+        if let fit = routeIntelligence.personalFit {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("与你的能力匹配", systemImage: "figure.run.circle.fill")
+                            .font(.headline)
+                            .foregroundStyle(TrailBoxColor.text)
+                        Spacer()
+                        Text("\(Int(fit.score.rounded()))%")
+                            .font(.title2.weight(.heavy))
+                            .foregroundStyle(fit.score >= 80 ? TrailBoxColor.primaryDark : .orange)
+                    }
+                    HStack(spacing: 8) {
+                        Text(fit.level)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(fit.score >= 80 ? TrailBoxColor.primaryDark : .orange, in: Capsule())
+                        if let minimum = fit.estimatedDurationMin, let maximum = fit.estimatedDurationMax {
+                            Text("预计 \(formatMinutes(minimum))–\(formatMinutes(maximum))")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                    Text(fit.reason)
+                        .font(.subheadline)
+                        .foregroundStyle(TrailBoxColor.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    sourceFootnote(fit.source)
+                }
+            }
+            .padding(.horizontal, 16)
+
+        }
+
+        if let analysis = routeIntelligence.analysis {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("路线分析").font(.headline)
+                        Spacer()
+                        Text(analysis.difficultyLevel)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(difficultyColor(analysis.difficultyScore), in: Capsule())
+                    }
+                    HStack(spacing: 0) {
+                        intelligenceMetric(analysis.routeTypeDisplay, "路线形态")
+                        intelligenceMetric(analysis.estimatedDurationDisplay, "预计用时")
+                        intelligenceMetric("\(Int(analysis.difficultyScore))", "难度分")
+                    }
+                    Divider()
+                    ForEach(analysis.features, id: \.self) { feature in
+                        Label(feature, systemImage: "sparkles")
+                            .font(.subheadline)
+                            .foregroundStyle(TrailBoxColor.text)
+                    }
+                    if let start = analysis.hardestSegmentStartM, let end = analysis.hardestSegmentEndM {
+                        Label(
+                            "困难路段：\(DisplayFormat.distance(start))–\(DisplayFormat.distance(end))",
+                            systemImage: "mountain.2.fill"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.orange)
+                    }
+                    sourceFootnote(analysis.source)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            if let preparation = analysis.preparation {
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("出发准备").font(.headline)
+                        HStack(spacing: 0) {
+                            intelligenceMetric(preparation.recommendedWaterL.map { String(format: "%.1f L", $0) } ?? "-", "建议饮水")
+                            intelligenceMetric(preparation.recommendedSupplyCount.map { "\($0) 次" } ?? "-", "补给次数")
+                            intelligenceMetric(preparation.headlampRecommended == true ? "建议携带" : "按需携带", "头灯")
+                        }
+                        if !preparation.equipment.isEmpty {
+                            FlowLayout(spacing: 8) {
+                                ForEach(preparation.equipment, id: \.self) { item in
+                                    Label(item, systemImage: "checkmark")
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(TrailBoxColor.primaryDark)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 6)
+                                        .background(TrailBoxColor.primary.opacity(0.1), in: Capsule())
+                                }
+                            }
+                        }
+                        ForEach(preparation.safetyNotes, id: \.self) { note in
+                            Label(note, systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        sourceFootnote("根据路线距离、爬升与预计用时自动估算")
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+
+        if let weather = routeIntelligence.weather {
+            weatherCard(weather)
+                .padding(.horizontal, 16)
+        }
+
+        if !routeIntelligence.pois.isEmpty || !routeIntelligence.discoveredPOIs.isEmpty {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("沿途设施").font(.headline)
+                    ForEach(routeIntelligence.pois.prefix(6)) { poi in
+                        HStack(spacing: 10) {
+                            Image(systemName: poiIcon(poi.type))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(poi.name).font(.subheadline.weight(.semibold))
+                                Text(poi.distanceAlongRouteM.map { "路线第 \(DisplayFormat.distance($0))" } ?? "路线附近")
+                                    .font(.caption)
+                                    .foregroundStyle(TrailBoxColor.secondaryText)
+                            }
+                            Spacer()
+                            Text(poi.status == "verified" ? "已确认" : "地图信息")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(poi.status == "verified" ? TrailBoxColor.primaryDark : TrailBoxColor.secondaryText)
+                        }
+                    }
+                    ForEach(routeIntelligence.discoveredPOIs.prefix(max(0, 6 - routeIntelligence.pois.count))) { poi in
+                        HStack(spacing: 10) {
+                            Image(systemName: poiIcon(poi.type))
+                                .foregroundStyle(TrailBoxColor.primaryDark)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(poi.name).font(.subheadline.weight(.semibold))
+                                Text(poi.distanceAlongRouteM.map { "路线第 \(DisplayFormat.distance($0)) · 偏离 \(DisplayFormat.distance(poi.distanceFromRouteM))" } ?? "路线附近")
+                                    .font(.caption)
+                                    .foregroundStyle(TrailBoxColor.secondaryText)
+                            }
+                            Spacer()
+                            Text("地图信息")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                    }
+                    if routeIntelligence.analysis?.canManage == true, let token = session.token, !routeIntelligence.discoveredPOIs.isEmpty {
+                        Divider()
+                        Button {
+                            Task {
+                                await routeIntelligence.confirmDiscoveredPOIs(trackID: track.id, token: token)
+                            }
+                        } label: {
+                            HStack {
+                                if routeIntelligence.isSavingPOIs {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: "checkmark.seal.fill")
+                                }
+                                Text(routeIntelligence.isSavingPOIs ? "正在保存…" : "确认并保存这些设施")
+                                Spacer()
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(routeIntelligence.isSavingPOIs)
+                    }
+                    if let message = routeIntelligence.errorMessage, routeIntelligence.analysis != nil {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.danger)
+                    }
+                    sourceFootnote("地图数据与跑友确认")
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+
+        if !routeIntelligence.conditions.isEmpty {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("近期路况").font(.headline)
+                    ForEach(routeIntelligence.conditions.prefix(4)) { condition in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: condition.severity == "warning" ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                                .foregroundStyle(condition.severity == "warning" ? .orange : TrailBoxColor.primaryDark)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(conditionTitle(condition.conditionType)).font(.subheadline.weight(.semibold))
+                                if let description = condition.description {
+                                    Text(description).font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                                }
+                                Text("更新于 \(DisplayFormat.date(condition.observedAt))")
+                                    .font(.caption2)
+                                    .foregroundStyle(TrailBoxColor.secondaryText)
+                            }
+                        }
+                    }
+                    sourceFootnote("跑友近期反馈")
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+
+        if let completions = routeIntelligence.completions, completions.count > 0 {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("跑友完成记录", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                        Spacer()
+                        Text("\(completions.count) 次")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                    }
+                    HStack(spacing: 0) {
+                        intelligenceMetric(completions.averageDurationSec.map(DisplayFormat.duration) ?? "-", "平均用时")
+                        intelligenceMetric(completions.fastestDurationSec.map(DisplayFormat.duration) ?? "-", "最快用时")
+                        intelligenceMetric(completions.recent.first.map { $0.direction == "reverse" ? "反向" : "正向" } ?? "-", "最近方向")
+                    }
+                    sourceFootnote(completions.source)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+
+        if let reviews = routeIntelligence.reviews, reviews.count > 0 {
+            SectionCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("跑友评价").font(.headline)
+                        Spacer()
+                        Text("\(reviews.count) 条").font(.caption).foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                    HStack(spacing: 0) {
+                        intelligenceMetric(reviewAverage(reviews, "difficulty_rating"), "难度")
+                        intelligenceMetric(reviewAverage(reviews, "scenery_rating"), "风景")
+                        intelligenceMetric(reviewAverage(reviews, "navigation_rating"), "导航")
+                    }
+                    ForEach(reviews.items.prefix(2)) { review in
+                        if let comment = review.comment, !comment.isEmpty {
+                            Text("“\(comment)”")
+                                .font(.subheadline)
+                                .foregroundStyle(TrailBoxColor.text)
+                                .padding(.top, 4)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+
+        SectionCard {
+            Button {
+                guard session.isAuthenticated else {
+                    session.requireAuthentication()
+                    return
+                }
+                showRouteFeedback = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.bubble.fill")
+                        .font(.title3)
+                        .foregroundStyle(TrailBoxColor.primaryDark)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("完成过这条路线？")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TrailBoxColor.text)
+                        Text("反馈难度、路况和补给，帮助其他跑友")
+                            .font(.caption)
+                            .foregroundStyle(TrailBoxColor.secondaryText)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func weatherCard(_ weather: RouteWeather) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("路线天气", systemImage: weatherIcon(weather.current.weatherCode))
+                        .font(.headline)
+                    Spacer()
+                    if let temperature = weather.current.temperature {
+                        Text("\(Int(temperature.rounded()))°")
+                            .font(.title2.weight(.bold))
+                    }
+                }
+                HStack(spacing: 0) {
+                    intelligenceMetric(weather.current.apparentTemperature.map { "\(Int($0.rounded()))°" } ?? "-", "体感")
+                    intelligenceMetric(weather.daily.precipitationProbabilityMax?.first.map { "\($0)%" } ?? "-", "降雨")
+                    intelligenceMetric(weather.current.windGusts.map { "\(Int($0.rounded())) km/h" } ?? "-", "阵风")
+                }
+                if let sunset = weather.daily.sunset?.first {
+                    Label("日落 \(clockTime(sunset))，请按预计用时预留至少 1 小时安全余量", systemImage: "sunset.fill")
+                        .font(.caption)
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+                sourceFootnote("\(weather.source) · 动态天气")
+            }
+        }
+    }
+
+    private func intelligenceMetric(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.65)
+            Text(label).font(.caption2).foregroundStyle(TrailBoxColor.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func sourceFootnote(_ source: String) -> some View {
+        Label(source, systemImage: "checkmark.seal")
+            .font(.caption2)
+            .foregroundStyle(TrailBoxColor.secondaryText)
+    }
+
+    private func difficultyColor(_ score: Double) -> Color {
+        if score >= 80 { return .red }
+        if score >= 60 { return .orange }
+        if score >= 40 { return .yellow.opacity(0.85) }
+        return TrailBoxColor.primaryDark
+    }
+
+    private func formatMinutes(_ minutes: Int) -> String {
+        minutes >= 60 ? "\(minutes / 60)小时\(minutes % 60 == 0 ? "" : "\(minutes % 60)分")" : "\(minutes)分"
+    }
+
+    private func weatherIcon(_ code: Int?) -> String {
+        guard let code else { return "cloud.sun.fill" }
+        if code == 0 { return "sun.max.fill" }
+        if [1, 2, 3].contains(code) { return "cloud.sun.fill" }
+        if (51...67).contains(code) || (80...82).contains(code) { return "cloud.rain.fill" }
+        if (71...77).contains(code) || (85...86).contains(code) { return "cloud.snow.fill" }
+        if code >= 95 { return "cloud.bolt.rain.fill" }
+        return "cloud.fill"
+    }
+
+    private func clockTime(_ value: String) -> String {
+        value.split(separator: "T").last.map(String.init) ?? value
+    }
+
+    private func poiIcon(_ type: String) -> String {
+        switch type {
+        case "parking": return "parkingsign.circle.fill"
+        case "restroom": return "figure.dress.line.vertical.figure"
+        case "store", "supply": return "cart.fill"
+        case "hospital": return "cross.case.fill"
+        case "transit": return "bus.fill"
+        case "camp": return "tent.fill"
+        default: return "mappin.circle.fill"
+        }
+    }
+
+    private func conditionTitle(_ type: String) -> String {
+        switch type {
+        case "closure": return "封路"
+        case "construction": return "施工"
+        case "snow": return "积雪"
+        case "mud": return "泥泞"
+        case "supply": return "补给变化"
+        case "signal": return "信号情况"
+        default: return "路线提醒"
+        }
+    }
+
+    private func reviewAverage(_ summary: RouteReviewSummary, _ key: String) -> String {
+        summary.averages[key].map { String(format: "%.1f", $0) } ?? "-"
+    }
+
+    private var routeMapPOIs: [RouteMapPOI] {
+        let saved = routeIntelligence.pois.map {
+            RouteMapPOI(id: "saved-\($0.id)", name: $0.name, type: $0.type, latitude: $0.latitude, longitude: $0.longitude)
+        }
+        let discovered = routeIntelligence.discoveredPOIs.map {
+            RouteMapPOI(id: "map-\($0.id)", name: $0.name, type: $0.type, latitude: $0.latitude, longitude: $0.longitude)
+        }
+        return Array((saved + discovered).prefix(12))
+    }
+
+    private var activityMatchesCard: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("匹配到公开路线", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(.headline)
+                ForEach(routeIntelligence.activityMatches.prefix(3)) { match in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(match.routeName ?? "公开路线")
+                                .font(.subheadline.weight(.semibold))
+                            Text(match.matchType == "complete" ? "已完成路线" : "完成部分路线")
+                                .font(.caption)
+                                .foregroundStyle(TrailBoxColor.secondaryText)
+                        }
+                        Spacer()
+                        Text("\(Int((match.coverageRatio * 100).rounded()))%")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(TrailBoxColor.primaryDark)
+                    }
+                }
+                sourceFootnote("根据轨迹空间覆盖率自动匹配")
+            }
+        }
     }
 
     private func detailActions(_ track: Track) -> some View {
-        HStack(spacing: 12) {
-            Button { download(track) } label: {
-                Label("下载 GPX", systemImage: "arrow.down.circle")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-            }
-            .foregroundStyle(TrailBoxColor.primaryDark)
-            .background(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TrailBoxColor.primary.opacity(0.35)))
+        FloatingActionBar {
+            HStack(spacing: 12) {
+                Button { download(track) } label: {
+                    Label("下载 GPX", systemImage: "arrow.down.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                }
+                .foregroundStyle(TrailBoxColor.primaryDark)
+                .buttonStyle(.plain)
+                .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            Button { showSharePreview = true } label: {
-                Label(isPublicSource ? "分享路线" : "分享记录", systemImage: "square.and.arrow.up")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                Button { showSharePreview = true } label: {
+                    Label(isPublicSource ? "分享路线" : "分享记录", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                }
+                .foregroundStyle(.white)
+                .buttonStyle(.plain)
+                .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .foregroundStyle(.white)
-            .background(TrailBoxColor.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .background(.white.shadow(.drop(color: .black.opacity(0.08), radius: 8, y: -3)))
     }
 
     private func metric(_ value: String, _ label: String) -> some View {
@@ -441,8 +961,14 @@ struct TrackDetailView: View {
                                     capturedVoiceText = ""
                                     voiceRecorder.cancel()
                                 } label: {
-                                    Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(TrailBoxColor.secondaryText).frame(width: 32, height: 32).background(.white).clipShape(Circle())
-                                }.accessibilityLabel("删除本次语音录入")
+                                    Image(systemName: "xmark")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(TrailBoxColor.secondaryText)
+                                        .frame(width: 32, height: 32)
+                                }
+                                .buttonStyle(.plain)
+                                .trailBoxGlass(in: Circle())
+                                .accessibilityLabel("删除本次语音录入")
                             }
                             Text(capturedVoiceText).font(.subheadline).foregroundStyle(TrailBoxColor.text).lineLimit(3)
                         }.padding(12).background(TrailBoxColor.background).clipShape(RoundedRectangle(cornerRadius: 10))
@@ -452,9 +978,11 @@ struct TrackDetailView: View {
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(minHeight: 56)
-                            .background(isVoiceGestureActive ? Color.black : TrailBoxColor.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
                             .contentShape(RoundedRectangle(cornerRadius: 10))
+                            .trailBoxGlass(
+                                tint: isVoiceGestureActive ? .black : TrailBoxColor.primary,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
                             .gesture(voiceStartGesture())
                     Button(capturedVoiceText.isEmpty ? "跳过体感，直接分析" : "开始 AI 分析") {
                         analyze(track, feeling: ActivityFeeling(overallFeeling: nil, processTags: [], bodyTags: [], routeEnvTags: [], painDetails: [], voiceText: capturedVoiceText, textNote: ""))
@@ -463,9 +991,8 @@ struct TrackDetailView: View {
                     .foregroundStyle(TrailBoxColor.primaryDark)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 56)
-                    .background(TrailBoxColor.primary.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(TrailBoxColor.primary.opacity(0.25)))
+                    .buttonStyle(.plain)
+                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
         }.padding(.horizontal, 16)
@@ -512,8 +1039,10 @@ struct TrackDetailView: View {
     private func endpointButton(title: String, point: TrackPoint, trackName: String, color: Color) -> some View {
         Button { navigationDestination = NavigationDestination(point: point, name: "\(trackName) \(title)") } label: {
             HStack(spacing: 8) { Circle().fill(color).frame(width: 10, height: 10); VStack(alignment: .leading, spacing: 2) { Text(title).font(.caption).foregroundStyle(TrailBoxColor.secondaryText); Text("导航").font(.subheadline.weight(.semibold)).foregroundStyle(TrailBoxColor.text) }; Spacer(); Image(systemName: "arrow.triangle.turn.up.right.diamond").foregroundStyle(TrailBoxColor.primaryDark) }
-                .padding(12).background(.white).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(TrailBoxColor.border))
+                .padding(12)
         }
+        .buttonStyle(.plain)
+        .trailBoxGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func navigationProviders(for destination: NavigationDestination) -> [NavigationProvider] {
@@ -738,7 +1267,7 @@ private struct VoiceTranscriptBubble: View {
             Image(systemName: "waveform").foregroundStyle(TrailBoxColor.primaryDark)
             Text(transcript.isEmpty ? "正在听你说…" : transcript).font(.subheadline).foregroundStyle(TrailBoxColor.text).lineLimit(3)
             Spacer(minLength: 0)
-        }.padding(14).background(.white.opacity(0.96)).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+        }.padding(14).background(TrailBoxColor.surface.opacity(0.96)).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).shadow(color: .black.opacity(0.12), radius: 14, y: 6)
     }
 }
 
@@ -870,7 +1399,7 @@ private struct EditTrackView: View {
                 Section("记录信息") { TextField("记录名称", text: $name); TextField("城市", text: $city); TextField("标签", text: $tags); Picker("运动类型", selection: $sport) { Text("越野跑").tag("越野跑"); Text("徒步").tag("徒步") } }
                 Section("公开设置") { Toggle("公开为探索路线", isOn: $isPublic); Toggle("展示贡献者昵称", isOn: $showContributor) }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(TrailBoxColor.danger) } }
-            }.navigationTitle("编辑记录").navigationBarTitleDisplayMode(.inline)
+            }.navigationTitle(track.isPublic ? "编辑路线" : "编辑记录").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .topBarLeading) { Button("取消") { dismiss() } }; ToolbarItem(placement: .topBarTrailing) { Button(isSaving ? "保存中…" : "保存") { save() }.disabled(isSaving || name.isEmpty) } }
         }
     }
@@ -1085,8 +1614,17 @@ private enum ActivityChartSampleBuilder {
     }
 }
 
+struct RouteMapPOI: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let type: String
+    let latitude: Double
+    let longitude: Double
+}
+
 struct TrackMap: UIViewRepresentable {
     let points: [TrackPoint]
+    var pois: [RouteMapPOI] = []
 
     func makeUIView(context: Context) -> MKMapView { let map = MKMapView(); map.isRotateEnabled = false; map.showsCompass = false; return map }
 
@@ -1099,6 +1637,13 @@ struct TrackMap: UIViewRepresentable {
         let start = MKPointAnnotation(); start.coordinate = coordinates[0]; start.title = "起点"
         let end = MKPointAnnotation(); end.coordinate = coordinates[coordinates.count - 1]; end.title = "终点"
         map.addAnnotations([start, end])
+        map.addAnnotations(pois.map { poi in
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = CLLocationCoordinate2D(latitude: poi.latitude, longitude: poi.longitude)
+            annotation.title = poi.name
+            annotation.subtitle = poi.type
+            return annotation
+        })
         map.setVisibleMapRect(polyline.boundingMapRect, edgePadding: UIEdgeInsets(top: 36, left: 28, bottom: 36, right: 28), animated: false)
         map.delegate = context.coordinator
     }

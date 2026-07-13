@@ -4,14 +4,14 @@ import SwiftUI
 struct TrailBoxApp: App {
     @StateObject private var session = SessionStore()
     @StateObject private var deepLinkRouter = DeepLinkRouter()
-    @StateObject private var bottomBarVisibility = BottomBarVisibilityStore()
+    @StateObject private var savedRoutes = SavedRoutesStore()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(session)
                 .environmentObject(deepLinkRouter)
-                .environmentObject(bottomBarVisibility)
+                .environmentObject(savedRoutes)
                 .tint(TrailBoxColor.primary)
                 .preferredColorScheme(.light)
                 .onOpenURL { deepLinkRouter.handle($0) }

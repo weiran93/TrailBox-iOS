@@ -1,44 +1,31 @@
 import SwiftUI
 
-@MainActor
-final class BottomBarVisibilityStore: ObservableObject {
-    @Published var isVisible = true
-}
-
 struct RootView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var deepLinkRouter: DeepLinkRouter
-    @EnvironmentObject private var bottomBarVisibility: BottomBarVisibilityStore
+    @EnvironmentObject private var savedRoutes: SavedRoutesStore
     @State private var selectedTab: Tab = .explore
     @State private var showAuthentication = false
     @State private var pendingTabAfterAuthentication: Tab?
 
-    private enum Tab { case explore, activity }
-
-    // Total height of the custom bottom bar including the safe-area filler.
-    static let bottomBarHeight: CGFloat = 83
+    private enum Tab { case explore, activity, profile }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Both tabs stay in the view hierarchy so their @StateObject view models
-            // and scroll positions survive tab switches. Visibility is toggled via opacity.
-            // The tab content extends underneath the bottom bar; each tab insets its own
-            // scrollable content so the bar never compresses the layout when it hides.
+        TabView(selection: tabSelection) {
             ExploreView(showAuthentication: $showAuthentication)
-                .opacity(selectedTab == .explore ? 1 : 0)
-                .allowsHitTesting(selectedTab == .explore)
-                .zIndex(selectedTab == .explore ? 1 : 0)
+                .tabItem { Label("探索路线", systemImage: "map") }
+                .tag(Tab.explore)
 
             MyTracksView(showAuthentication: $showAuthentication)
-                .opacity(selectedTab == .activity ? 1 : 0)
-                .allowsHitTesting(selectedTab == .activity)
-                .zIndex(selectedTab == .activity ? 1 : 0)
+                .tabItem { Label("运动记录", systemImage: "figure.run") }
+                .tag(Tab.activity)
 
-            bottomBarContainer
-                .zIndex(2)
+            ProfileView(showAuthentication: $showAuthentication)
+                .tabItem { Label("我的", systemImage: "person") }
+                .tag(Tab.profile)
         }
-        .background(TrailBoxColor.background)
-        .ignoresSafeArea(.container, edges: .bottom)
+        .tint(TrailBoxColor.primary)
+        .trailBoxTabBarMinimizeOnScroll()
         .sheet(isPresented: Binding(
             get: { showAuthentication || session.shouldPresentAuthentication },
             set: { presented in
@@ -57,45 +44,31 @@ struct RootView: View {
             selectedTab = pendingTab
             pendingTabAfterAuthentication = nil
         }
-    }
-
-    private var bottomBarContainer: some View {
-        VStack(spacing: 0) {
-            bottomBar
-            Color.white.frame(height: bottomBarVisibility.isVisible ? 34 : 0)
+        .task(id: session.token) {
+            await savedRoutes.load(token: session.token)
         }
-        .frame(height: bottomBarVisibility.isVisible ? RootView.bottomBarHeight : 0)
-        .opacity(bottomBarVisibility.isVisible ? 1 : 0)
-        .clipped()
-        .animation(.easeInOut(duration: 0.25), value: bottomBarVisibility.isVisible)
-    }
-
-    private var bottomBar: some View {
-        HStack(spacing: 0) {
-            tabButton(.explore, title: "探索路线", icon: "magnifyingglass")
-            tabButton(.activity, title: "我的记录", icon: "figure.run")
+        .alert("收藏路线", isPresented: Binding(
+            get: { savedRoutes.errorMessage != nil },
+            set: { if !$0 { savedRoutes.dismissError() } }
+        )) {
+            Button("知道了", role: .cancel) { savedRoutes.dismissError() }
+        } message: {
+            Text(savedRoutes.errorMessage ?? "")
         }
-        .frame(height: 49)
-        .background(.white)
-        .overlay(alignment: .top) { Divider().overlay(TrailBoxColor.border) }
     }
 
-    private func tabButton(_ tab: Tab, title: String, icon: String) -> some View {
-        Button {
-            if tab == .activity && !session.isAuthenticated {
-                selectedTab = .explore
-                pendingTabAfterAuthentication = .activity
-                showAuthentication = true
-            } else {
+    private var tabSelection: Binding<Tab> {
+        Binding(
+            get: { selectedTab },
+            set: { tab in
+                if tab == .profile && !session.isAuthenticated {
+                    pendingTabAfterAuthentication = .profile
+                    showAuthentication = true
+                    return
+                }
                 selectedTab = tab
                 pendingTabAfterAuthentication = nil
             }
-        } label: {
-            VStack(spacing: 3) {
-                Image(systemName: icon).font(.system(size: 19, weight: .semibold))
-                Text(title).font(.caption2.weight(.medium))
-            }.foregroundStyle(selectedTab == tab ? TrailBoxColor.primary : TrailBoxColor.secondaryText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        )
     }
 }
