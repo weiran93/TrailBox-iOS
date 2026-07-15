@@ -593,9 +593,9 @@ struct TrackDetailView: View {
                                 Color.clear.frame(height: 0).id(RouteDetailSection.analysis)
                                 routeIntelligenceSections(track)
 
-                                Color.clear.frame(height: 0).id(RouteDetailSection.profile)
                                 ElevationChart(points: track.points, title: "海拔剖面")
                                     .padding(.horizontal, 16)
+                                    .id(RouteDetailSection.profile)
                                 GradeChart(metrics: metrics)
                                     .padding(.horizontal, 16)
                                 trackMetadataSection(track)
@@ -1497,9 +1497,13 @@ struct TrackDetailView: View {
         HStack(spacing: 0) {
             ForEach(RouteDetailSection.allCases) { section in
                 Button {
-                    withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85)) {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         selectedRouteSection = section
-                        proxy.scrollTo(section, anchor: UnitPoint(x: 0.5, y: 0.12))
+                    }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.28)) {
+                        proxy.scrollTo(section, anchor: UnitPoint(x: 0.5, y: 0.14))
                     }
                 } label: {
                     Text(section.title)
@@ -1765,6 +1769,7 @@ struct TrackDetailView: View {
                     }
                     .foregroundStyle(.white)
                     .buttonStyle(.plain)
+                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     Button { showSharePreview = true } label: {

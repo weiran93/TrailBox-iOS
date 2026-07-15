@@ -10,8 +10,7 @@ final class ContributionViewModel: ObservableObject {
         guard isRefresh || tracks.isEmpty else { return }
         state = .loading
         do {
-            let allTracks: [Track] = try await APIClient.shared.request("/tracks/my?include_points=true&limit=200&offset=0", token: token)
-            tracks = allTracks.filter { $0.isPublic }
+            tracks = try await APIClient.shared.request("/tracks/contributions?include_points=true&limit=200&offset=0", token: token)
             state = tracks.isEmpty ? .empty : .content
         } catch {
             state = .failed(ErrorMessage.display(error))

@@ -51,6 +51,7 @@ struct Track: Codable, Identifiable, Equatable {
     let durationSec: Double?
     let startTime: Date?
     let sport: String?
+    let trackKind: String
     let isPublic: Bool
     let showContributor: Bool
     let recommendationReason: String?
@@ -63,7 +64,7 @@ struct Track: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, name, description, city, tags, sport, points
         case userID = "user_id"; case distanceM = "distance_m"; case elevationGainM = "elevation_gain_m"; case elevationLossM = "elevation_loss_m"
-        case durationSec = "duration_sec"; case startTime = "start_time"; case isPublic = "is_public"; case showContributor = "show_contributor"
+        case durationSec = "duration_sec"; case startTime = "start_time"; case trackKind = "track_kind"; case isPublic = "is_public"; case showContributor = "show_contributor"
         case recommendationReason = "recommendation_reason"
         case contributorName = "contributor_name"; case contributorPublicID = "contributor_public_id"; case createdAt = "created_at"; case aiAnalysisText = "ai_analysis_text"
     }
@@ -84,6 +85,7 @@ struct Track: Codable, Identifiable, Equatable {
         durationSec = try container.decodeIfPresent(Double.self, forKey: .durationSec)
         startTime = try container.decodeIfPresent(Date.self, forKey: .startTime)
         sport = try container.decodeIfPresent(String.self, forKey: .sport)
+        trackKind = try container.decodeIfPresent(String.self, forKey: .trackKind) ?? "activity"
         isPublic = try container.decode(Bool.self, forKey: .isPublic)
         showContributor = try container.decode(Bool.self, forKey: .showContributor)
         recommendationReason = try container.decodeIfPresent(String.self, forKey: .recommendationReason)

@@ -517,6 +517,7 @@ struct ContributeRouteView: View {
                     city: city,
                     tags: normalizedTags,
                     sport: sport,
+                    trackKind: "route_contribution",
                     isPublic: true,
                     showContributor: showContributor,
                     recommendationReason: reason.isEmpty ? nil : reason,

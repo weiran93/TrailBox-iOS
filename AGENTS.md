@@ -25,7 +25,7 @@
 
 - **App 显示名**：`小野box`
 - **Bundle ID**：`com.trailbox.ios`
-- **当前版本**：`0.1.4`（Build `6`，本轮发布目标）
+- **当前版本**：`0.1.5`（Build `7`，已提交 App Store 审核）
 - **iOS 最低版本**：iOS 16.0
 - **设备支持**：仅 iPhone（`TARGETED_DEVICE_FAMILY = 1`）
 - **开发团队**：`CNXB3793X3`
@@ -222,9 +222,10 @@ python3 run.py
 |------|------|
 | `GET /tracks/public?include_points=true&limit=20&offset=...` | 公开路线列表 |
 | `GET /tracks/my?include_points=true&limit=20&offset=...` | 我的轨迹 |
+| `GET /tracks/contributions?include_points=true&limit=...&offset=...` | 当前用户公开贡献路线 |
 | `GET /tracks/{id}` | 轨迹详情（需登录） |
 | `GET /tracks/{id}/public` | 公开轨迹详情（deep link 使用） |
-| `POST /tracks` | 上传 `.fit`/`.gpx`/`.kml` |
+| `POST /tracks` | 上传 `.fit`/`.gpx`/`.kml`；`track_kind` 区分个人记录 `activity` 与独立贡献 `route_contribution` |
 | `POST /tracks/suggest-metadata` | 上传前自动推荐名称/城市/标签/运动类型 |
 | `GET /tracks/{id}/download.gpx` | 下载 GPX |
 | `POST /tracks/{id}/ai-analysis` | 提交体感，获取 AI 分析 |
@@ -707,13 +708,14 @@ chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
 
 - App Store App ID：`6783572832`
 - Bundle ID：`com.trailbox.ios`
-- 已上传版本：`0.1.4`
-- 当前提交审核 build：`6`
-- App Store Version ID：`4472a40c-5ba9-4dc8-83ff-d8213b102ba4`
-- Build ID / Delivery UUID：`bbb197df-7902-48af-84f4-84f304388575`
-- Review Submission ID：`a93f7973-5497-4a84-956d-62cf0447a051`
+- 已上传版本：`0.1.5`
+- 当前提交审核 build：`7`
+- App Store Version ID：`3f152fff-7b52-4dad-9d51-8ee190cd73b8`
+- Build ID / Delivery UUID：`8924e07e-2d04-4831-bed5-cf3ce7c2802a`
+- Review Submission ID：`1e7c4443-152c-476d-a9bc-aa0d22c9dc51`
 - 当前审核状态：`WAITING_FOR_REVIEW`
-- 提交时间：`2026-07-13T15:05:11.321Z`
+- 提交时间：`2026-07-15T11:15:57.054Z`
+- 商店预览图：简体中文 `APP_IPHONE_67` 与 `APP_IPHONE_65` 各 6 张，均已上传并完成校验
 - 上一版 `0.1.3 (5)` 已处于 `READY_FOR_SALE`。
 - 更新说明：`全面升级路线探索与路线智能；新增出发计划、个人能力匹配和天气/设施/路况信息；优化路线详情、一键出发、收藏、GPX 导出、导航、运动记录图表与 AI 复盘。`
 
@@ -722,8 +724,8 @@ chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
 构建前至少提升 build 号；如果线上同版本已上架，必须提升 `MARKETING_VERSION`，仅提升 `CURRENT_PROJECT_VERSION` 会被 Apple 拒绝。当前项目已提升到：
 
 ```text
-MARKETING_VERSION = 0.1.4
-CURRENT_PROJECT_VERSION = 6
+MARKETING_VERSION = 0.1.5
+CURRENT_PROJECT_VERSION = 7
 ```
 
 Archive：

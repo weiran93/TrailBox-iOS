@@ -1894,7 +1894,7 @@ struct UploadTrackView: View {
             defer { if access { selectedFile.stopAccessingSecurityScopedResource() } }
             do {
                 let submittedName = nameWasEdited ? name.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-                let track = try await APIClient.shared.uploadTrack(fileURL: selectedFile, name: submittedName, city: city, tags: normalizedTags, sport: sport, isPublic: isPublic, showContributor: showContributor, token: token)
+                let track = try await APIClient.shared.uploadTrack(fileURL: selectedFile, name: submittedName, city: city, tags: normalizedTags, sport: sport, trackKind: "activity", isPublic: isPublic, showContributor: showContributor, token: token)
                 let _: [RouteMatch]? = try? await APIClient.shared.request(
                     "/tracks/match-activity/\(track.id)",
                     method: "POST",

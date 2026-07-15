@@ -109,6 +109,8 @@ Your track collection for trail running and hiking. Import, explore, and share r
 • 优化路线详情与一键出发流程，支持收藏、GPX 导出和起终点导航
 • 优化运动记录详情、图表和 AI 复盘，完整展示训练结论与行动建议
 • 优化收藏路线预览、登录引导和页面返回体验
+• 修复部分轨迹累计爬升统计偏高，并区分个人运动记录与贡献路线
+• 优化路线剖面跳转和一键出发操作区域
 ```
 
 ### 英文
@@ -119,6 +121,8 @@ This update:
 • Improves route details and the one-tap start flow with favorites, GPX export, and navigation
 • Improves activity details, charts, and AI workout reviews with complete conclusions and action tips
 • Improves saved-route previews, login guidance, and navigation behavior
+• Fixes inflated elevation totals for some tracks and separates personal activities from route contributions
+• Improves profile-section navigation and the one-tap start hit area
 ```
 
 ---
