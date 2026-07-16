@@ -513,19 +513,37 @@ private enum PWAStyleRouteCardRenderer {
         } else {
             coordinateText = data.locationText
         }
-        drawMapLabel(coordinateText, in: CGRect(x: 92, y: 392, width: 174, height: 70), alignment: .left, context: context)
+        drawMapLabel(coordinateText, xAnchor: 92, y: 392, alignment: .left, context: context)
 
         let altitude = data.calculatedMaxElevation.map { NumberFormatter.localizedString(from: NSNumber(value: Int($0)), number: .decimal) } ?? "—"
-        drawMapLabel("最高海拔\n\(altitude) M", in: CGRect(x: 822, y: 392, width: 166, height: 70), alignment: .right, context: context)
+        drawMapLabel("最高海拔\n\(altitude) M", xAnchor: 988, y: 392, alignment: .right, context: context)
 
         if let contributor = data.contributorText, !contributor.isEmpty {
             drawText("路线贡献 · \(contributor)", in: CGRect(x: 590, y: 880, width: 396, height: 24), font: pingFang(14, weight: .medium), color: UIColor.white.withAlphaComponent(0.72), alignment: .right, characterSpacing: 1.0, context: context)
         }
     }
 
-    private static func drawMapLabel(_ value: String, in rect: CGRect, alignment: NSTextAlignment, context: CGContext) {
+    private static func drawMapLabel(
+        _ value: String,
+        xAnchor: CGFloat,
+        y: CGFloat,
+        alignment: NSTextAlignment,
+        context: CGContext
+    ) {
+        let font = avenir(14, weight: .semibold)
+        let textWidth = value
+            .components(separatedBy: .newlines)
+            .map { ($0 as NSString).size(withAttributes: [.font: font, .kern: 0.6]).width }
+            .max() ?? 0
+        let width = ceil(textWidth) + 28
+        let rect = CGRect(
+            x: alignment == .right ? xAnchor - width : xAnchor,
+            y: y,
+            width: width,
+            height: 70
+        )
         drawGlassSurface(rect, radius: 18, fill: UIColor.white.withAlphaComponent(0.16), stroke: UIColor.white.withAlphaComponent(0.34), shadow: .clear, shadowBlur: 0, shadowOffset: .zero, context: context)
-        drawText(value, in: rect.insetBy(dx: 14, dy: 10), font: avenir(14, weight: .semibold), color: UIColor.white.withAlphaComponent(0.94), alignment: alignment, lineSpacing: 2, characterSpacing: 0.6, context: context)
+        drawText(value, in: rect.insetBy(dx: 14, dy: 10), font: font, color: UIColor.white.withAlphaComponent(0.94), alignment: alignment, lineSpacing: 2, characterSpacing: 0.6, context: context)
     }
 
     private static func drawStats(data: RouteShareData, context: CGContext) {
@@ -570,7 +588,7 @@ private enum PWAStyleRouteCardRenderer {
         }
 
         drawTransparentQR(data.qrURL, in: CGRect(x: 818, y: 1178, width: 176, height: 176), context: context)
-        drawText("微信识别查看路线", in: CGRect(x: 780, y: 1344, width: 252, height: 22), font: pingFang(12), color: UIColor(hex: 0x4C6158), alignment: .center, characterSpacing: 0.25, context: context)
+        drawText("微信识别查看路线", in: CGRect(x: 780, y: 1333, width: 252, height: 22), font: pingFang(12), color: UIColor(hex: 0x4C6158), alignment: .center, characterSpacing: 0.25, context: context)
     }
 
     private static func resolvedDifficultyScore(_ data: RouteShareData) -> Double {

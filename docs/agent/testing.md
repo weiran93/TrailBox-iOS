@@ -5,7 +5,7 @@
 ## 测试分层
 
 - `TrailBoxTests`：API 日期/状态/解码、匿名观测同意与队列、Deep Link、收藏乐观更新。
-- `TrailBoxUITests`：游客登录拦截、缓存登录态过期、匿名观测同意/拒绝/关闭、探索路线到收藏与一键出发的核心冒烟流程。
+- `TrailBoxUITests`：游客登录拦截、缓存登录态过期、匿名观测同意/拒绝/关闭、探索路线到收藏、一键出发与分享卡生成的核心冒烟流程。
 - 关联后端 `/Users/zhaoweiran/projects/TrailBox/api/tests`：API schema、持久化、权限、遥测汇总和既有业务回归。
 
 ## 常用命令

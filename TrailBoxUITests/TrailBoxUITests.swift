@@ -59,15 +59,30 @@ final class TrailBoxUITests: XCTestCase {
         favorite.tap()
         XCTAssertTrue(app.buttons["取消收藏路线"].waitForExistence(timeout: 3))
 
+        let shareButton = app.buttons["route-share-button"]
+        XCTAssertTrue(shareButton.waitForExistence(timeout: 3))
+        shareButton.tap()
+
+        XCTAssertTrue(app.navigationBars["分享路线"].waitForExistence(timeout: 5))
+        let saveButton = app.buttons["保存图片"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: saveButton)
+        waitForExpectations(timeout: 15)
+
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "route-share-card-preview"
+        preview.lifetime = .keepAlways
+        add(preview)
+
+        app.buttons["返回"].tap()
+        XCTAssertTrue(app.navigationBars["轨迹详情"].waitForExistence(timeout: 3))
+
         let departure = app.buttons["route-departure-button"]
         XCTAssertTrue(departure.waitForExistence(timeout: 3))
         departure.tap()
         XCTAssertTrue(app.staticTexts["准备出发"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["导航到起点"].exists)
         XCTAssertTrue(app.staticTexts["导出 GPX"].exists)
-        app.swipeDown()
-
-        XCTAssertTrue(app.buttons["route-share-button"].waitForExistence(timeout: 3))
     }
 
     func testExpiredRestoredSessionReturnsToAuthentication() {
