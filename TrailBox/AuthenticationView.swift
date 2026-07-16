@@ -54,6 +54,11 @@ struct AuthenticationView: View {
                 NavigationStack { PrivacyPolicyView() }
             }
             .interactiveDismissDisabled(isSubmitting)
+            .onAppear {
+                if errorMessage == nil {
+                    errorMessage = session.consumeAuthenticationError()
+                }
+            }
             .onChange(of: mode) { _ in
                 password = ""
                 showsPassword = false

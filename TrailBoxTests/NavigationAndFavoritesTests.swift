@@ -53,4 +53,25 @@ final class NavigationAndFavoritesTests: XCTestCase {
         XCTAssertEqual(store.feedback?.kind, .saved)
         XCTAssertNil(store.errorMessage)
     }
+
+    @MainActor
+    func testFavoriteLoadUnauthorizedRequestsAuthenticationWithoutBusinessAlert() async {
+        MockURLProtocol.handler = { request in
+            MockURLProtocol.response(
+                status: 401,
+                data: Data("{\"detail\":\"expired\"}".utf8),
+                url: request.url!
+            )
+        }
+        let client = APIClient(session: MockURLProtocol.session(), baseURL: { URL(string: "https://test.invalid")! }, telemetry: nil)
+        let telemetry = TelemetryManager(defaults: makeDefaults(), transport: CapturingTelemetryTransport(fails: true), metadata: .init(appVersion: "test", build: "1", osVersion: "test"))
+        let store = SavedRoutesStore(apiClient: client, telemetryManager: telemetry)
+
+        await store.load(token: "expired-token")
+
+        XCTAssertTrue(store.requiresAuthentication)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertTrue(store.consumeAuthenticationRequirement())
+        XCTAssertFalse(store.requiresAuthentication)
+    }
 }

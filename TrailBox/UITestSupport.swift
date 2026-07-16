@@ -32,6 +32,9 @@ final class TrailBoxUITestURLProtocol: URLProtocol {
             return finish(object: Self.route)
         }
         if path == "/boxes/want-to-run" {
+            if ProcessInfo.processInfo.arguments.contains("-trailboxUITestExpiredSession") {
+                return finish(status: 401, object: ["detail": "expired"])
+            }
             if request.httpMethod == "PUT" {
                 return finish(object: Self.box(tracks: [Self.route]))
             }

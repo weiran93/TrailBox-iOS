@@ -4,12 +4,14 @@ final class TrailBoxUITests: XCTestCase {
     private func launch(
         consent: String,
         authenticated: Bool = false,
+        expiredSession: Bool = false,
         reset: Bool = true
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-trailboxUITestMode", "-trailboxUITestConsent", consent]
         if reset { app.launchArguments.append("-trailboxUITestReset") }
         if authenticated { app.launchArguments.append("-trailboxUITestAuthenticated") }
+        if expiredSession { app.launchArguments.append("-trailboxUITestExpiredSession") }
         app.launch()
         return app
     }
@@ -66,5 +68,18 @@ final class TrailBoxUITests: XCTestCase {
         app.swipeDown()
 
         XCTAssertTrue(app.buttons["route-share-button"].waitForExistence(timeout: 3))
+    }
+
+    func testExpiredRestoredSessionReturnsToAuthentication() {
+        let app = launch(consent: "disabled", authenticated: true, expiredSession: true)
+
+        XCTAssertTrue(app.staticTexts["欢迎回到小野box"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["登录已过期，请重新登录"].exists)
+        XCTAssertFalse(app.alerts["收藏路线"].exists)
+
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.navigationBars["探索路线"].waitForExistence(timeout: 3))
+        app.tabBars.buttons["我的"].tap()
+        XCTAssertTrue(app.staticTexts["欢迎回到小野box"].waitForExistence(timeout: 3))
     }
 }

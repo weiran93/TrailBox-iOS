@@ -58,6 +58,11 @@ struct RootView: View {
         }
         .task(id: session.token) {
             await savedRoutes.load(token: session.token)
+            handleSavedRoutesAuthenticationIfNeeded()
+        }
+        .onChange(of: savedRoutes.requiresAuthentication) { requiresAuthentication in
+            guard requiresAuthentication else { return }
+            handleSavedRoutesAuthenticationIfNeeded()
         }
         .alert("收藏路线", isPresented: Binding(
             get: { savedRoutes.errorMessage != nil },
@@ -105,6 +110,11 @@ struct RootView: View {
                 pendingTabAfterAuthentication = nil
             }
         )
+    }
+
+    private func handleSavedRoutesAuthenticationIfNeeded() {
+        guard savedRoutes.consumeAuthenticationRequirement() else { return }
+        session.handle(APIError.unauthorized)
     }
 }
 

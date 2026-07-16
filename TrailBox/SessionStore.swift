@@ -43,9 +43,14 @@ final class SessionStore: ObservableObject {
     }
 
     func logout() {
+        clearCredentials()
+        authenticationError = nil
+        shouldPresentAuthentication = false
+    }
+
+    private func clearCredentials() {
         token = nil
         user = nil
-        authenticationError = nil
         KeychainStore.deleteToken()
         UserDefaults.standard.removeObject(forKey: "trailbox.current-user")
     }
@@ -62,9 +67,15 @@ final class SessionStore: ObservableObject {
 
     func handle(_ error: Error) {
         if case APIError.unauthorized = error {
+            clearCredentials()
             authenticationError = error.localizedDescription
-            logout()
+            shouldPresentAuthentication = true
         }
+    }
+
+    func consumeAuthenticationError() -> String? {
+        defer { authenticationError = nil }
+        return authenticationError
     }
 
     func update(user: User) {
@@ -75,6 +86,8 @@ final class SessionStore: ObservableObject {
     private func persist(_ response: TokenResponse) {
         token = response.accessToken
         user = response.user
+        authenticationError = nil
+        shouldPresentAuthentication = false
         KeychainStore.save(token: response.accessToken)
         UserDefaults.standard.set(try? JSONEncoder().encode(response.user), forKey: "trailbox.current-user")
     }

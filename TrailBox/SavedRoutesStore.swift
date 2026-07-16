@@ -28,6 +28,7 @@ final class SavedRoutesStore: ObservableObject {
     @Published private(set) var savingTrackIDs: Set<String> = []
     @Published private(set) var errorMessage: String?
     @Published private(set) var feedback: SavedRouteFeedback?
+    @Published private(set) var requiresAuthentication = false
     private var optimisticStates: [String: Bool] = [:]
     private var previewCache: [String: Track] = [:]
     private let apiClient: APIClient
@@ -54,11 +55,18 @@ final class SavedRoutesStore: ObservableObject {
         feedback = nil
     }
 
+    func consumeAuthenticationRequirement() -> Bool {
+        guard requiresAuthentication else { return false }
+        requiresAuthentication = false
+        return true
+    }
+
     func load(token: String?) async {
         guard let token else {
             box = nil
             feedback = nil
             errorMessage = nil
+            requiresAuthentication = false
             return
         }
         do {
@@ -66,8 +74,9 @@ final class SavedRoutesStore: ObservableObject {
             box = boxUsingCachedPreviews(loadedBox)
             box = await hydratedPreviews(in: loadedBox, token: token)
             errorMessage = nil
+            requiresAuthentication = false
         } catch {
-            errorMessage = "收藏路线加载失败：\(ErrorMessage.display(error))"
+            handle(error, messagePrefix: "收藏路线加载失败")
         }
     }
 
@@ -119,13 +128,25 @@ final class SavedRoutesStore: ObservableObject {
             feedback = SavedRouteFeedback(trackID: trackID, kind: successKind)
             await telemetryManager.record(.favorite, phase: .succeeded, source: .savedRoutes)
         } catch {
-            errorMessage = "收藏操作失败：\(ErrorMessage.display(error))"
+            handle(error, messagePrefix: "收藏操作失败")
             await telemetryManager.record(
                 .favorite,
                 phase: .failed,
                 source: .savedRoutes,
                 failureCategory: TelemetryFailureCategory.classify(error)
             )
+        }
+    }
+
+    private func handle(_ error: Error, messagePrefix: String) {
+        if case APIError.unauthorized = error {
+            box = nil
+            feedback = nil
+            errorMessage = nil
+            requiresAuthentication = true
+        } else {
+            requiresAuthentication = false
+            errorMessage = "\(messagePrefix)：\(ErrorMessage.display(error))"
         }
     }
 

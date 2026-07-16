@@ -5,7 +5,7 @@
 ## 测试分层
 
 - `TrailBoxTests`：API 日期/状态/解码、匿名观测同意与队列、Deep Link、收藏乐观更新。
-- `TrailBoxUITests`：游客登录拦截、匿名观测同意/拒绝/关闭、探索路线到收藏与一键出发的核心冒烟流程。
+- `TrailBoxUITests`：游客登录拦截、缓存登录态过期、匿名观测同意/拒绝/关闭、探索路线到收藏与一键出发的核心冒烟流程。
 - 关联后端 `/Users/zhaoweiran/projects/TrailBox/api/tests`：API schema、持久化、权限、遥测汇总和既有业务回归。
 
 ## 常用命令
@@ -51,7 +51,7 @@ python -m pytest -q
 ## Fixture 与约束
 
 - UI 测试通过 `-trailboxUITestMode` 启用 `URLProtocol` 固定响应；测试支持代码必须保持在 `#if DEBUG` 内。
-- `-trailboxUITestAuthenticated` 注入固定测试用户；`-trailboxUITestConsent unknown|enabled|disabled` 控制同意状态；`-trailboxUITestReset` 清理测试遥测状态。
+- `-trailboxUITestAuthenticated` 注入固定测试用户；`-trailboxUITestExpiredSession` 让收藏启动请求返回 401；`-trailboxUITestConsent unknown|enabled|disabled` 控制同意状态；`-trailboxUITestReset` 清理测试遥测状态。
 - Release 构建不得包含测试网络拦截行为，不得依赖生产账号或真实生产数据。
 - API/遥测测试不得断言或记录真实 Token、账号、轨迹 ID、坐标、路线名称或用户输入。
 
