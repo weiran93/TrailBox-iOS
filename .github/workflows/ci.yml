@@ -1,0 +1,73 @@
+name: iOS CI
+
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: XCTest and Release build
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
+      TEST_DESTINATION: platform=iOS Simulator,name=iPhone 17,OS=26.4
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain and simulator
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available
+
+      - name: Run unit and UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project TrailBox.xcodeproj \
+            -scheme TrailBox \
+            -destination "$TEST_DESTINATION" \
+            -resultBundlePath "$RUNNER_TEMP/TrailBoxTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$RUNNER_TEMP/xcodebuild-test.log"
+
+      - name: Build Release configuration
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project TrailBox.xcodeproj \
+            -scheme TrailBox \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/TrailBoxDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$RUNNER_TEMP/xcodebuild-release.log"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-diagnostics-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/TrailBoxTests.xcresult
+            ${{ runner.temp }}/xcodebuild-test.log
+            ${{ runner.temp }}/xcodebuild-release.log
+          if-no-files-found: ignore
+          retention-days: 7
