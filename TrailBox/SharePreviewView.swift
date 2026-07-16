@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SharePreviewView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var telemetry: TelemetryConsentController
     @StateObject private var renderer = ShareCardRenderer()
     @State private var type: ShareCardType
     @State private var shareImage: ShareImage?
@@ -27,7 +28,17 @@ struct SharePreviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("返回") { dismiss() } } }
             .task { renderer.render(type: activeType, data: data) }
-            .sheet(item: $shareImage) { ShareSheet(image: $0.image) }
+            .sheet(item: $shareImage) { item in
+                ShareSheet(image: item.image) { completed, error in
+                    Task { @MainActor in
+                        if let error {
+                            telemetry.record(.share, phase: .failed, source: .shareSheet, failureCategory: TelemetryFailureCategory.classify(error))
+                        } else {
+                            telemetry.record(.share, phase: completed ? .succeeded : .cancelled, source: .shareSheet, failureCategory: completed ? nil : .cancelled)
+                        }
+                    }
+                }
+            }
             .alert("提示", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) { Button("确定", role: .cancel) {} } message: { Text(message ?? "") }
             .safeAreaInset(edge: .bottom, spacing: 0) { actions }
         }
@@ -76,7 +87,12 @@ struct SharePreviewView: View {
         let isDisabled = renderer.image(for: activeType) == nil
         return FloatingActionBar {
             HStack(spacing: 12) {
-                Button { if let image = renderer.image(for: activeType) { shareImage = ShareImage(image: image) } } label: {
+                Button {
+                    if let image = renderer.image(for: activeType) {
+                        telemetry.record(.share, phase: .started, source: .shareSheet)
+                        shareImage = ShareImage(image: image)
+                    }
+                } label: {
                     Label("分享", systemImage: "square.and.arrow.up")
                         .font(.headline.weight(.bold))
                         .frame(maxWidth: .infinity, minHeight: 56)
@@ -105,7 +121,17 @@ struct SharePreviewView: View {
 
     private func save() {
         guard let image = renderer.image(for: activeType) else { return }
-        ImageSaveService.save(image) { result in message = (try? result.get()) != nil ? "已保存到相册" : "保存失败，请检查相册权限" }
+        telemetry.record(.share, phase: .started, source: .photoLibrary)
+        ImageSaveService.save(image) { result in
+            switch result {
+            case .success:
+                telemetry.record(.share, phase: .succeeded, source: .photoLibrary)
+                message = "已保存到相册"
+            case .failure:
+                telemetry.record(.share, phase: .failed, source: .photoLibrary, failureCategory: .permission)
+                message = "保存失败，请检查相册权限"
+            }
+        }
     }
 }
 

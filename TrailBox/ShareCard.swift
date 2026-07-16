@@ -858,6 +858,11 @@ enum ImageSaveError: Error { case noPermission, writeFailed }
 
 struct ShareSheet: UIViewControllerRepresentable {
     let image: UIImage
-    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: [image], applicationActivities: nil) }
+    var onComplete: (Bool, Error?) -> Void = { _, _ in }
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        controller.completionWithItemsHandler = { _, completed, _, error in onComplete(completed, error) }
+        return controller
+    }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

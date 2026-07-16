@@ -19,6 +19,9 @@
 		A00000000000000000000033 /* RouteFeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000133 /* RouteFeedbackView.swift */; };
 		A00000000000000000000034 /* DeparturePlanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000134 /* DeparturePlanStore.swift */; };
 		A00000000000000000000035 /* DeparturePlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000135 /* DeparturePlanView.swift */; };
+		A00000000000000000000036 /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000136 /* Telemetry.swift */; };
+		A00000000000000000000037 /* TelemetryAdminView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000137 /* TelemetryAdminView.swift */; };
+		A00000000000000000000038 /* UITestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000138 /* UITestSupport.swift */; };
 		A00000000000000000000007 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* DesignSystem.swift */; };
 		A00000000000000000000008 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000108 /* RootView.swift */; };
 		A00000000000000000000009 /* AuthenticationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000109 /* AuthenticationView.swift */; };
@@ -31,7 +34,29 @@
 		A00000000000000000000015 /* DeepLinkRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000115 /* DeepLinkRouter.swift */; };
 		A00000000000000000000017 /* ContributeRouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000118 /* ContributeRouteView.swift */; };
 		A00000000000000000000019 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000119 /* FlowLayout.swift */; };
+		B10000000000000000000001 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000001 /* TestSupport.swift */; };
+		B10000000000000000000002 /* APIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000002 /* APIClientTests.swift */; };
+		B10000000000000000000003 /* TelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* TelemetryTests.swift */; };
+		B10000000000000000000004 /* NavigationAndFavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000004 /* NavigationAndFavoritesTests.swift */; };
+		B10000000000000000000005 /* TrailBoxUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* TrailBoxUITests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		G10000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000601 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000401;
+			remoteInfo = TrailBox;
+		};
+		G10000000000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000601 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000401;
+			remoteInfo = TrailBox;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A00000000000000000000117 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -46,6 +71,9 @@
 		A00000000000000000000133 /* RouteFeedbackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteFeedbackView.swift; sourceTree = "<group>"; };
 		A00000000000000000000134 /* DeparturePlanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeparturePlanStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000135 /* DeparturePlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeparturePlanView.swift; sourceTree = "<group>"; };
+		A00000000000000000000136 /* Telemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Telemetry.swift; sourceTree = "<group>"; };
+		A00000000000000000000137 /* TelemetryAdminView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryAdminView.swift; sourceTree = "<group>"; };
+		A00000000000000000000138 /* UITestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestSupport.swift; sourceTree = "<group>"; };
 		A00000000000000000000107 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		A00000000000000000000108 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		A00000000000000000000109 /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
@@ -60,10 +88,31 @@
 		A00000000000000000000119 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		A00000000000000000000116 /* TrailBox.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TrailBox.entitlements; sourceTree = "<group>"; };
 		A00000000000000000000120 /* TrailBox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = TrailBox.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000000000000000000001 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		C10000000000000000000002 /* APIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000003 /* TelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000004 /* NavigationAndFavoritesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationAndFavoritesTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000005 /* TrailBoxUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailBoxUITests.swift; sourceTree = "<group>"; };
+		C10000000000000000000006 /* TrailBoxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = TrailBoxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000000000000000000007 /* TrailBoxUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = TrailBoxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A00000000000000000000201 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000002 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -77,6 +126,8 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000302 /* TrailBox */,
+				E10000000000000000000001 /* TrailBoxTests */,
+				E10000000000000000000002 /* TrailBoxUITests */,
 				A00000000000000000000303 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -96,6 +147,9 @@
 				A00000000000000000000133 /* RouteFeedbackView.swift */,
 				A00000000000000000000134 /* DeparturePlanStore.swift */,
 				A00000000000000000000135 /* DeparturePlanView.swift */,
+				A00000000000000000000136 /* Telemetry.swift */,
+				A00000000000000000000137 /* TelemetryAdminView.swift */,
+				A00000000000000000000138 /* UITestSupport.swift */,
 				A00000000000000000000107 /* DesignSystem.swift */,
 				A00000000000000000000108 /* RootView.swift */,
 				A00000000000000000000109 /* AuthenticationView.swift */,
@@ -117,8 +171,29 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000120 /* TrailBox.app */,
+				C10000000000000000000006 /* TrailBoxTests.xctest */,
+				C10000000000000000000007 /* TrailBoxUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		E10000000000000000000001 /* TrailBoxTests */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000001 /* TestSupport.swift */,
+				C10000000000000000000002 /* APIClientTests.swift */,
+				C10000000000000000000003 /* TelemetryTests.swift */,
+				C10000000000000000000004 /* NavigationAndFavoritesTests.swift */,
+			);
+			path = TrailBoxTests;
+			sourceTree = "<group>";
+		};
+		E10000000000000000000002 /* TrailBoxUITests */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000005 /* TrailBoxUITests.swift */,
+			);
+			path = TrailBoxUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -141,6 +216,42 @@
 			productReference = A00000000000000000000120 /* TrailBox.app */;
 			productType = "com.apple.product-type.application";
 		};
+		F10000000000000000000001 /* TrailBoxTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = I10000000000000000000001 /* Build configuration list for PBXNativeTarget "TrailBoxTests" */;
+			buildPhases = (
+				D10000000000000000000005 /* Sources */,
+				D10000000000000000000001 /* Frameworks */,
+				D10000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				G10000000000000000000003 /* PBXTargetDependency */,
+			);
+			name = TrailBoxTests;
+			productName = TrailBoxTests;
+			productReference = C10000000000000000000006 /* TrailBoxTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		F10000000000000000000002 /* TrailBoxUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = I10000000000000000000002 /* Build configuration list for PBXNativeTarget "TrailBoxUITests" */;
+			buildPhases = (
+				D10000000000000000000006 /* Sources */,
+				D10000000000000000000002 /* Frameworks */,
+				D10000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				G10000000000000000000004 /* PBXTargetDependency */,
+			);
+			name = TrailBoxUITests;
+			productName = TrailBoxUITests;
+			productReference = C10000000000000000000007 /* TrailBoxUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -152,6 +263,14 @@
 				TargetAttributes = {
 					A00000000000000000000401 = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					F10000000000000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = A00000000000000000000401;
+					};
+					F10000000000000000000002 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = A00000000000000000000401;
 					};
 				};
 			};
@@ -170,6 +289,8 @@
 			projectRoot = "";
 			targets = (
 				A00000000000000000000401 /* TrailBox */,
+				F10000000000000000000001 /* TrailBoxTests */,
+				F10000000000000000000002 /* TrailBoxUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -180,6 +301,20 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000016 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -201,6 +336,9 @@
 				A00000000000000000000033 /* RouteFeedbackView.swift in Sources */,
 				A00000000000000000000034 /* DeparturePlanStore.swift in Sources */,
 				A00000000000000000000035 /* DeparturePlanView.swift in Sources */,
+				A00000000000000000000036 /* Telemetry.swift in Sources */,
+				A00000000000000000000037 /* TelemetryAdminView.swift in Sources */,
+				A00000000000000000000038 /* UITestSupport.swift in Sources */,
 				A00000000000000000000007 /* DesignSystem.swift in Sources */,
 				A00000000000000000000008 /* RootView.swift in Sources */,
 				A00000000000000000000009 /* AuthenticationView.swift in Sources */,
@@ -216,7 +354,39 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D10000000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001 /* TestSupport.swift in Sources */,
+				B10000000000000000000002 /* APIClientTests.swift in Sources */,
+				B10000000000000000000003 /* TelemetryTests.swift in Sources */,
+				B10000000000000000000004 /* NavigationAndFavoritesTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000005 /* TrailBoxUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		G10000000000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000401 /* TrailBox */;
+			targetProxy = G10000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		G10000000000000000000004 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000401 /* TrailBox */;
+			targetProxy = G10000000000000000000002 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A00000000000000000000701 /* Debug */ = {
@@ -241,6 +411,7 @@
 				CODE_SIGN_ENTITLEMENTS = TrailBox/TrailBox.entitlements;
 				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = CNXB3793X3;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrailBox/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "小野box";
@@ -254,6 +425,8 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
@@ -283,6 +456,76 @@
 			};
 			name = Release;
 		};
+		H10000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = CNXB3793X3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.trailbox.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TrailBox.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TrailBox";
+			};
+			name = Debug;
+		};
+		H10000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = CNXB3793X3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.trailbox.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TrailBox.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TrailBox";
+			};
+			name = Release;
+		};
+		H10000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = CNXB3793X3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.trailbox.ios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = TrailBox;
+			};
+			name = Debug;
+		};
+		H10000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = CNXB3793X3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.trailbox.ios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = TrailBox;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -300,6 +543,24 @@
 			buildConfigurations = (
 				A00000000000000000000703 /* Debug */,
 				A00000000000000000000704 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		I10000000000000000000001 /* Build configuration list for PBXNativeTarget "TrailBoxTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				H10000000000000000000001 /* Debug */,
+				H10000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		I10000000000000000000002 /* Build configuration list for PBXNativeTarget "TrailBoxUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				H10000000000000000000003 /* Debug */,
+				H10000000000000000000004 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -1,7 +1,7 @@
 # TrailBox iOS — Agent 接手文档
 
 > 文档定位：本文件面向需要继续迭代、修复或扩展 TrailBox iOS 端的 AI Agent / 开发者。阅读后应能独立完成编译、运行、定位代码、添加功能。
-> 文档版本：2026-07-13（基于项目当前文件状态）
+> 文档版本：2026-07-16（基于项目当前文件状态）
 > 项目路径：`/Users/zhaoweiran/projects/TrailBox-iOS`
 
 ---
@@ -12,6 +12,8 @@
 
 - `docs/agent/context.md`：项目当前状态、关键命令、长期约束。
 - `docs/agent/doc-governance.md`：上下文文档的更新、拆分、删除规则。
+- `docs/agent/testing.md`：测试分层、fixture 约定与发布前验证命令。
+- `docs/agent/decisions/2026-07-16-first-party-telemetry.md`：首方匿名观测的隐私和数据边界。
 
 完成会影响构建、发布、架构、长期约定或项目结构的变更后，按 `docs/agent/doc-governance.md` 做文档影响检查。不要把一次性调试过程、未确认猜测、密钥或临时会话偏好写入持久上下文。
 
@@ -25,7 +27,7 @@
 
 - **App 显示名**：`小野box`
 - **Bundle ID**：`com.trailbox.ios`
-- **当前版本**：`0.1.6`（Build `8`，已提交 App Store 审核）
+- **当前版本**：`0.1.6`（Build `8`，App Store 状态 `IN_REVIEW`）
 - **iOS 最低版本**：iOS 16.0
 - **设备支持**：仅 iPhone（`TARGETED_DEVICE_FAMILY = 1`）
 - **开发团队**：`CNXB3793X3`
@@ -156,7 +158,7 @@ python3 run.py
 - **MVVM-lite**：每个主要页面都有独立的 `ViewModel`（`ExploreViewModel`、`MyTracksViewModel`、`TrackDetailViewModel`、`ShareCardRenderer`），视图持有 `@StateObject`。
 - **全局状态注入**：`SessionStore`、`DeepLinkRouter`、`SavedRoutesStore` 作为 `EnvironmentObject` 在 `TrailBoxApp` 注入。
 - **单例依赖**：`APIClient.shared` 是网络入口；没有 DI 容器或协议抽象，新增依赖保持同样风格即可。
-- **无测试**：当前无 Unit Test / UI Test 目标。
+- **自动化回归**：共享 `TrailBox` scheme 包含 `TrailBoxTests` 和 `TrailBoxUITests`；GitHub Actions 在 `main` 的 push / pull request 上执行完整 XCTest 与 Release 构建，具体约定见 `docs/agent/testing.md`。
 
 ---
 
@@ -184,6 +186,7 @@ python3 run.py
 | `RouteFeedbackView.swift` | ~250 | 路线评分、推荐意见和近期路况反馈 Sheet |
 | `ShareCard.swift` | ~850 | 1080×1440 分享卡渲染：MapKit 快照、PWA 风格、二维码、保存相册 |
 | `SharePreviewView.swift` | ~100 | 分享预览 Sheet |
+| `TelemetryAdminView.swift` | 管理员 7/30 天匿名样本漏斗、动作成功率、版本与 MetricKit 诊断 |
 
 ### 4.3 数据与服务
 
@@ -196,6 +199,8 @@ python3 run.py
 | `KeychainStore.swift` | Keychain 封装，用于保存 access token |
 | `AppConfiguration.swift` | API Base URL、隐私政策链接、支持邮箱、启动参数读取 |
 | `DesignSystem.swift` | 全局颜色、卡片组件、空状态、格式化工具 |
+| `Telemetry.swift` | 明确同意状态、匿名事件/MetricKit 队列、独立无 Token 传输与 OSLog 分类 |
+| `UITestSupport.swift` | 仅 Debug 编译的 URLProtocol fixture 与 UI 测试登录态注入 |
 
 ### 4.4 资源
 
@@ -310,6 +315,18 @@ ITRA_SEARCH_API_KEY=...
 后端实现位于关联仓库 `/Users/zhaoweiran/projects/TrailBox/api/app/routers/route_intelligence.py` 和 `services/route_intelligence.py`。自动路线分析是可解释的确定性计算；天气来源为 Open-Meteo。MapKit 自动发现的设施在贡献者确认前只能标为「地图信息」，不要表述为已核实的补水或安全设施。
 
 路线智能后端已于 2026-07-13 部署到 `runfast.fun`。部署后必须确认这些路径返回 `application/json`；若得到状态 200 但内容是 `text/html`，说明请求落入了 PWA SPA fallback，App 会因解码失败而只显示本地 MapKit 设施。
+
+### 5.9 首方匿名观测
+
+| 接口 | 用途 |
+|------|------|
+| `POST /telemetry/events` | 无 Token 接收每批最多 50 个白名单事件，事件 UUID 幂等 |
+| `POST /telemetry/reports` | 无 Token 接收最大 512KB 的 MetricKit 指标或诊断报告，报告 UUID 幂等 |
+| `GET /admin/telemetry/summary?days=7|30` | 管理员查看匿名安装、session、会话级漏斗、动作成功率、失败、版本与诊断数量 |
+| `GET /admin/telemetry/reports` | 管理员查看最近诊断报告元数据 |
+| `GET /admin/telemetry/reports/{id}` | 管理员查看单份原始 MetricKit JSON |
+
+首方观测后端已于 2026-07-16 部署到 `runfast.fun`，公共接收路径配置了请求体上限和每 IP 频率限制。客户端必须在用户明确同意后才生成匿名安装 UUID、订阅 MetricKit 或入队；请求永远不携带登录 Token。数据边界、保留期和复查条件见 `docs/agent/decisions/2026-07-16-first-party-telemetry.md`。
 
 ---
 
@@ -597,6 +614,8 @@ http://121.40.151.3:5003
 | HTTP/2 Support | 建议开启 |
 
 保存后等待证书申请完成，即可通过 `https://runfast.fun` 访问。
+
+首方观测限流配置保存在服务器 `/clouddream/nginx-proxy-manage/data/nginx/custom/http_top.conf` 和 `server_proxy.conf`：前者定义 `trailbox_telemetry` 频率区，后者只为 `runfast.fun` 的 `/telemetry/events`、`/telemetry/reports` 应用精确路径、请求体上限和 `429` 限流。修改后必须先执行 `docker exec nginx-app nginx -t`，通过后再 reload。
 
 ### 12.6 部署后验证清单
 

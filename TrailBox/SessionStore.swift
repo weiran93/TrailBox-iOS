@@ -8,6 +8,20 @@ final class SessionStore: ObservableObject {
     @Published var shouldPresentAuthentication = false
 
     init() {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-trailboxUITestAuthenticated") {
+            token = "trailbox-ui-test-token"
+            user = User(
+                id: 999,
+                username: "ui-test-runner",
+                publicID: "999999",
+                nickname: "测试跑者",
+                isAdmin: false,
+                hasDeepSeekAPIKey: false
+            )
+            return
+        }
+#endif
         token = KeychainStore.readToken()
         if let data = UserDefaults.standard.data(forKey: "trailbox.current-user"), let user = try? JSONDecoder().decode(User.self, from: data) {
             self.user = user

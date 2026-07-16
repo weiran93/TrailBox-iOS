@@ -97,6 +97,7 @@ struct ProfileView: View {
                     TrackDetailView(
                         trackID: trackID,
                         isPublicSource: true,
+                        telemetrySource: .contribution,
                         onDeleted: { await refreshContributions() },
                         onSaved: { await refreshContributions() }
                     )
@@ -526,7 +527,7 @@ struct SavedRoutesView: View {
             set: { if !$0 { selectedTrackID = nil } }
         )) {
             if let selectedTrackID {
-                TrackDetailView(trackID: selectedTrackID, isPublicSource: true)
+                TrackDetailView(trackID: selectedTrackID, isPublicSource: true, telemetrySource: .savedRoutes)
             }
         }
         .toolbar {

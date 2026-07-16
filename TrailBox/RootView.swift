@@ -4,6 +4,7 @@ struct RootView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var deepLinkRouter: DeepLinkRouter
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
+    @EnvironmentObject private var telemetry: TelemetryConsentController
     @State private var selectedTab: Tab = .explore
     @State private var showAuthentication = false
     @State private var pendingTabAfterAuthentication: Tab?
@@ -37,7 +38,18 @@ struct RootView: View {
             }
         )) { AuthenticationView() }
         .sheet(item: $deepLinkRouter.pendingRoute) { route in
-            NavigationStack { TrackDetailView(trackID: route.id, isPublicSource: true) }
+            NavigationStack { TrackDetailView(trackID: route.id, isPublicSource: true, telemetrySource: .deepLink) }
+        }
+        .sheet(isPresented: Binding(
+            get: {
+                telemetry.state == .unknown
+                    && !showAuthentication
+                    && !session.shouldPresentAuthentication
+                    && deepLinkRouter.pendingRoute == nil
+            },
+            set: { _ in }
+        )) {
+            TelemetryConsentView()
         }
         .onChange(of: session.isAuthenticated) { isAuthenticated in
             guard isAuthenticated, let pendingTab = pendingTabAfterAuthentication else { return }
