@@ -609,6 +609,7 @@ final class TelemetryConsentController: ObservableObject {
     private let manager: TelemetryManager
     private let reporterFactory: (@escaping (MetricKitCapturedReport) -> Void) -> any MetricKitReporting
     private var didRecordSession = false
+    private var serviceTransition: Task<Void, Never>?
     private lazy var reporter: any MetricKitReporting = reporterFactory { [weak self] report in
         Task { @MainActor [weak self] in self?.capture(report) }
     }
@@ -638,11 +639,7 @@ final class TelemetryConsentController: ObservableObject {
         }
 #endif
         state = defaults.string(forKey: Self.consentKey).flatMap(TelemetryConsentState.init(rawValue:)) ?? .unknown
-        if state == .enabled {
-            Task { @MainActor [weak self] in await self?.enableServices() }
-        } else {
-            Task { await manager.deactivate() }
-        }
+        scheduleServices(for: state)
     }
 
     var isEnabled: Bool { state == .enabled }
@@ -656,11 +653,11 @@ final class TelemetryConsentController: ObservableObject {
         state = value
         defaults.set(value.rawValue, forKey: Self.consentKey)
         if value == .enabled {
-            Task { @MainActor [weak self] in await self?.enableServices() }
+            scheduleServices(for: value)
         } else {
             reporter.stop()
             didRecordSession = false
-            Task { await manager.deactivate() }
+            scheduleServices(for: value)
         }
     }
 
@@ -691,13 +688,36 @@ final class TelemetryConsentController: ObservableObject {
         }
     }
 
+    private func scheduleServices(for requestedState: TelemetryConsentState) {
+        let previousTransition = serviceTransition
+        serviceTransition = Task { @MainActor [weak self] in
+            await previousTransition?.value
+            guard let self, self.state == requestedState else { return }
+            if requestedState == .enabled {
+                await self.enableServices()
+            } else {
+                await self.manager.deactivate()
+            }
+        }
+    }
+
     private func enableServices() async {
         await manager.activate()
+        guard state == .enabled else {
+            await manager.deactivate()
+            return
+        }
         reporter.start()
         guard !didRecordSession else { return }
         didRecordSession = true
         await manager.record(.appSession, phase: .succeeded, source: .app)
     }
+
+#if DEBUG
+    func waitForServiceTransition() async {
+        await serviceTransition?.value
+    }
+#endif
 
     private func capture(_ captured: MetricKitCapturedReport) {
         guard state == .enabled,

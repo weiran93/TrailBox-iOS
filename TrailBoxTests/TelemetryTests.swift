@@ -130,18 +130,12 @@ final class TelemetryTests: XCTestCase {
         XCTAssertFalse(snapshot.hasInstallationID)
 
         controller.setConsent(.enabled)
-        let activated = await eventually {
-            (await manager.snapshot()).hasInstallationID
-        }
-        XCTAssertTrue(activated)
+        await controller.waitForServiceTransition()
         snapshot = await manager.snapshot()
         XCTAssertTrue(snapshot.hasInstallationID)
 
         controller.setEnabled(false)
-        let deactivated = await eventually {
-            !(await manager.snapshot()).hasInstallationID
-        }
-        XCTAssertTrue(deactivated)
+        await controller.waitForServiceTransition()
         snapshot = await manager.snapshot()
         XCTAssertFalse(snapshot.hasInstallationID)
         XCTAssertEqual(controller.state, .disabled)
@@ -163,8 +157,8 @@ final class TelemetryTests: XCTestCase {
         )
 
         controller.setConsent(.enabled)
-        let reporterStarted = await eventually { reporter.isStarted }
-        XCTAssertTrue(reporterStarted)
+        await controller.waitForServiceTransition()
+        XCTAssertTrue(reporter.isStarted)
         reporter.emit(MetricKitCapturedReport(
             type: .diagnostic,
             data: Data("{\"diagnostics\":[]}".utf8),
@@ -184,6 +178,7 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(reports.first?.report.hangCount, 2)
 
         controller.setEnabled(false)
+        await controller.waitForServiceTransition()
         XCTAssertFalse(reporter.isStarted)
     }
 }
