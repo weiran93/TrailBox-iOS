@@ -49,7 +49,26 @@ struct SharePreviewView: View {
         } else if renderer.status == .failed && type == cardType {
             Button("重新生成") { renderer.render(type: cardType, data: data) }.buttonStyle(.borderedProminent)
         } else {
-            ProgressView("正在生成分享卡").task { if renderer.image(for: cardType) == nil { renderer.render(type: cardType, data: data) } }
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.thinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(TrailBoxColor.border.opacity(0.65), lineWidth: 1)
+                    }
+
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.large)
+                    Text("正在生成分享卡")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(TrailBoxColor.secondaryText)
+                }
+            }
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 2)
         }
     }
 

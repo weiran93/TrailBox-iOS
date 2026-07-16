@@ -134,6 +134,12 @@ private struct NavigationDestination: Identifiable {
     let name: String
 }
 
+private struct SharePreviewRequest: Identifiable {
+    let id = UUID()
+    let source: ShareSource
+    let data: RouteShareData
+}
+
 private enum NavigationProvider: Identifiable {
     case apple, amap(URL), baidu(URL), tencent(URL), google(URL)
 
@@ -469,7 +475,7 @@ struct TrackDetailView: View {
     @State private var isVoiceGestureActive = false
     @State private var capturedVoiceText = ""
     @State private var showFullscreenMap = false
-    @State private var showSharePreview = false
+    @State private var sharePreviewRequest: SharePreviewRequest?
     @State private var showReport = false
     @State private var showRouteFeedback = false
     @State private var showStartRouteSheet = false
@@ -701,7 +707,9 @@ struct TrackDetailView: View {
         }
         .alert("操作失败", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) { Button("确定", role: .cancel) {} } message: { Text(actionError ?? "") }
         .sheet(isPresented: $showFullscreenMap) { NavigationStack { TrackMap(points: track.points, pois: routeMapPOIs).ignoresSafeArea(edges: .bottom).navigationTitle(track.name).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showFullscreenMap = false } } } } }
-        .sheet(isPresented: $showSharePreview) { SharePreviewView(source: isPublicSource ? .exploreRoute : .activity, data: RouteShareData.make(from: track, source: isPublicSource ? .exploreRoute : .activity)) }
+        .sheet(item: $sharePreviewRequest) { request in
+            SharePreviewView(source: request.source, data: request.data)
+        }
         .sheet(isPresented: $showReport) { ReportTrackView(trackID: track.id) }
         .sheet(isPresented: $showRouteFeedback) {
             RouteFeedbackView(trackID: track.id) {
@@ -1758,7 +1766,8 @@ struct TrackDetailView: View {
     }
 
     private func detailActions(_ track: Track) -> some View {
-        FloatingActionBar {
+        let actionShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return FloatingActionBar {
             HStack(spacing: 12) {
                 if isPublicSource {
                     Button { showStartRouteSheet = true } label: {
@@ -1766,20 +1775,23 @@ struct TrackDetailView: View {
                             .font(.subheadline.weight(.bold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(.white)
                     .buttonStyle(.plain)
-                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(tint: TrailBoxColor.primary, in: actionShape)
+                    .contentShape(actionShape)
 
-                    Button { showSharePreview = true } label: {
+                    Button { presentSharePreview(for: track) } label: {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(width: 52, height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(TrailBoxColor.primaryDark)
                     .buttonStyle(.plain)
-                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(in: actionShape)
+                    .contentShape(actionShape)
                     .accessibilityLabel("分享路线")
                 } else {
                     Button { download(track) } label: {
@@ -1787,23 +1799,39 @@ struct TrackDetailView: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(TrailBoxColor.primaryDark)
                     .buttonStyle(.plain)
-                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(in: actionShape)
+                    .contentShape(actionShape)
 
-                    Button { showSharePreview = true } label: {
+                    Button { presentSharePreview(for: track) } label: {
                         Label("分享记录", systemImage: "square.and.arrow.up")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(.white)
                     .buttonStyle(.plain)
-                    .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(tint: TrailBoxColor.primary, in: actionShape)
+                    .contentShape(actionShape)
                 }
             }
         }
+    }
+
+    private func presentSharePreview(for track: Track) {
+        let source: ShareSource = isPublicSource ? .exploreRoute : .activity
+        sharePreviewRequest = SharePreviewRequest(
+            source: source,
+            data: RouteShareData.make(
+                from: track,
+                source: source,
+                analysis: isPublicSource ? routeIntelligence.analysis : nil
+            )
+        )
     }
 
     private func routeStartActionSheet(_ track: Track) -> some View {
