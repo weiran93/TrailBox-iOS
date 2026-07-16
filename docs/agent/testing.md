@@ -43,7 +43,7 @@ python -m pytest -q
 ## 持续集成
 
 - iOS GitHub Actions 配置在 `.github/workflows/ci.yml`，对 `main` 的 push、pull request 和手动触发运行。
-- CI 使用 `macos-26`、Xcode 26.4 和 iPhone 17 / iOS 26.4，顺序执行完整 XCTest 与 Release 模拟器构建。
+- CI 使用 `macos-26`、Xcode 26.4 和 Runner 上最新可用的 iPhone 17 模拟器，顺序执行完整 XCTest 与 Release 模拟器构建。
 - 测试或构建失败时，Actions 运行详情会保留 7 天的 `.xcresult` 和 `xcodebuild` 日志。
 - 关联后端仓库通过 `.github/workflows/api-ci.yml` 在 Ubuntu / Python 3.12 上执行 `python -m pytest -q`。
 - CI 不使用生产账号、签名、Token 或 App Store Connect 密钥；发布归档和真机 MetricKit 验证仍按发布流程单独执行。

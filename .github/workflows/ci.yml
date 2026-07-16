@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 40
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
-      TEST_DESTINATION: platform=iOS Simulator,name=iPhone 17,OS=26.4
+      TEST_DESTINATION: platform=iOS Simulator,name=iPhone 17,OS=latest
 
     steps:
       - name: Check out repository
