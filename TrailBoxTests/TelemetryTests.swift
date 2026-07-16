@@ -2,6 +2,19 @@ import XCTest
 @testable import TrailBox
 
 final class TelemetryTests: XCTestCase {
+    @MainActor
+    private func eventually(
+        timeout: TimeInterval = 5,
+        condition: () async -> Bool
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if await condition() { return true }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        } while Date() < deadline
+        return await condition()
+    }
+
     func testNoConsentMeansNoIdentifierOrQueue() async {
         let defaults = makeDefaults()
         let transport = CapturingTelemetryTransport(fails: true)
@@ -117,12 +130,18 @@ final class TelemetryTests: XCTestCase {
         XCTAssertFalse(snapshot.hasInstallationID)
 
         controller.setConsent(.enabled)
-        try await Task.sleep(nanoseconds: 80_000_000)
+        let activated = await eventually {
+            (await manager.snapshot()).hasInstallationID
+        }
+        XCTAssertTrue(activated)
         snapshot = await manager.snapshot()
         XCTAssertTrue(snapshot.hasInstallationID)
 
         controller.setEnabled(false)
-        try await Task.sleep(nanoseconds: 80_000_000)
+        let deactivated = await eventually {
+            !(await manager.snapshot()).hasInstallationID
+        }
+        XCTAssertTrue(deactivated)
         snapshot = await manager.snapshot()
         XCTAssertFalse(snapshot.hasInstallationID)
         XCTAssertEqual(controller.state, .disabled)
@@ -144,8 +163,8 @@ final class TelemetryTests: XCTestCase {
         )
 
         controller.setConsent(.enabled)
-        try await Task.sleep(nanoseconds: 80_000_000)
-        XCTAssertTrue(reporter.isStarted)
+        let reporterStarted = await eventually { reporter.isStarted }
+        XCTAssertTrue(reporterStarted)
         reporter.emit(MetricKitCapturedReport(
             type: .diagnostic,
             data: Data("{\"diagnostics\":[]}".utf8),
@@ -154,7 +173,10 @@ final class TelemetryTests: XCTestCase {
             cpuExceptionCount: 3,
             diskWriteExceptionCount: 4
         ))
-        try await Task.sleep(nanoseconds: 80_000_000)
+        let reportTransported = await eventually {
+            await transport.reports.count == 1
+        }
+        XCTAssertTrue(reportTransported)
 
         let reports = await transport.reports
         XCTAssertEqual(reports.count, 1)
