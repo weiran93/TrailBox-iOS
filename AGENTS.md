@@ -25,7 +25,7 @@
 
 - **App 显示名**：`小野box`
 - **Bundle ID**：`com.trailbox.ios`
-- **当前版本**：`0.1.5`（Build `7`，已提交 App Store 审核）
+- **当前版本**：`0.1.6`（Build `8`，已提交 App Store 审核）
 - **iOS 最低版本**：iOS 16.0
 - **设备支持**：仅 iPhone（`TARGETED_DEVICE_FAMILY = 1`）
 - **开发团队**：`CNXB3793X3`
@@ -708,24 +708,24 @@ chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
 
 - App Store App ID：`6783572832`
 - Bundle ID：`com.trailbox.ios`
-- 已上传版本：`0.1.5`
-- 当前提交审核 build：`7`
-- App Store Version ID：`3f152fff-7b52-4dad-9d51-8ee190cd73b8`
-- Build ID / Delivery UUID：`8924e07e-2d04-4831-bed5-cf3ce7c2802a`
-- Review Submission ID：`1e7c4443-152c-476d-a9bc-aa0d22c9dc51`
+- 已上传版本：`0.1.6`
+- 当前提交审核 build：`8`
+- App Store Version ID：`6b433d54-7964-41be-b13f-3a80b0409f93`
+- Build ID / Delivery UUID：`6824bc36-7f2c-440f-beee-31d997db502f`
+- Review Submission ID：`bfdcaa73-daab-4a0b-bb81-60e8db2bf21d`
 - 当前审核状态：`WAITING_FOR_REVIEW`
-- 提交时间：`2026-07-15T11:15:57.054Z`
-- 商店预览图：简体中文 `APP_IPHONE_67` 与 `APP_IPHONE_65` 各 6 张，均已上传并完成校验
-- 上一版 `0.1.3 (5)` 已处于 `READY_FOR_SALE`。
-- 更新说明：`全面升级路线探索与路线智能；新增出发计划、个人能力匹配和天气/设施/路况信息；优化路线详情、一键出发、收藏、GPX 导出、导航、运动记录图表与 AI 复盘。`
+- 提交时间：`2026-07-16T06:04:25.934Z`
+- 商店预览图：简体中文 `APP_IPHONE_67` 与 `APP_IPHONE_65` 各 6 张，沿用上一版已校验的最新预览图
+- 上一版 `0.1.5 (7)` 已处于 `READY_FOR_SALE`。
+- 更新说明：`新增真实地图路线分享卡；扩大一键出发与分享按钮点击区域；优化分享弹窗响应、生成 loading、长名称、二维码说明和卡片排版。`
 
 ### 15.3 构建与上传命令
 
 构建前至少提升 build 号；如果线上同版本已上架，必须提升 `MARKETING_VERSION`，仅提升 `CURRENT_PROJECT_VERSION` 会被 Apple 拒绝。当前项目已提升到：
 
 ```text
-MARKETING_VERSION = 0.1.5
-CURRENT_PROJECT_VERSION = 7
+MARKETING_VERSION = 0.1.6
+CURRENT_PROJECT_VERSION = 8
 ```
 
 Archive：
