@@ -1,7 +1,7 @@
 # TrailBox iOS — Agent 接手文档
 
 > 文档定位：本文件面向需要继续迭代、修复或扩展 TrailBox iOS 端的 AI Agent / 开发者。阅读后应能独立完成编译、运行、定位代码、添加功能。
-> 文档版本：2026-07-13（基于项目当前文件状态）
+> 文档版本：2026-07-16（基于项目当前文件状态）
 > 项目路径：`/Users/zhaoweiran/projects/TrailBox-iOS`
 
 ---
@@ -12,6 +12,8 @@
 
 - `docs/agent/context.md`：项目当前状态、关键命令、长期约束。
 - `docs/agent/doc-governance.md`：上下文文档的更新、拆分、删除规则。
+- `docs/agent/testing.md`：测试分层、fixture 约定与发布前验证命令。
+- `docs/agent/decisions/2026-07-16-first-party-telemetry.md`：首方匿名观测的隐私和数据边界。
 
 完成会影响构建、发布、架构、长期约定或项目结构的变更后，按 `docs/agent/doc-governance.md` 做文档影响检查。不要把一次性调试过程、未确认猜测、密钥或临时会话偏好写入持久上下文。
 
@@ -25,7 +27,7 @@
 
 - **App 显示名**：`小野box`
 - **Bundle ID**：`com.trailbox.ios`
-- **当前版本**：`0.1.5`（Build `7`，已提交 App Store 审核）
+- **当前版本**：`0.1.6`（Build `8`，App Store 状态 `IN_REVIEW`）
 - **iOS 最低版本**：iOS 16.0
 - **设备支持**：仅 iPhone（`TARGETED_DEVICE_FAMILY = 1`）
 - **开发团队**：`CNXB3793X3`
@@ -156,7 +158,7 @@ python3 run.py
 - **MVVM-lite**：每个主要页面都有独立的 `ViewModel`（`ExploreViewModel`、`MyTracksViewModel`、`TrackDetailViewModel`、`ShareCardRenderer`），视图持有 `@StateObject`。
 - **全局状态注入**：`SessionStore`、`DeepLinkRouter`、`SavedRoutesStore` 作为 `EnvironmentObject` 在 `TrailBoxApp` 注入。
 - **单例依赖**：`APIClient.shared` 是网络入口；没有 DI 容器或协议抽象，新增依赖保持同样风格即可。
-- **无测试**：当前无 Unit Test / UI Test 目标。
+- **自动化回归**：共享 `TrailBox` scheme 包含 `TrailBoxTests` 和 `TrailBoxUITests`；GitHub Actions 在 `main` 的 push / pull request 上执行完整 XCTest 与 Release 构建，具体约定见 `docs/agent/testing.md`。
 
 ---
 
@@ -184,6 +186,7 @@ python3 run.py
 | `RouteFeedbackView.swift` | ~250 | 路线评分、推荐意见和近期路况反馈 Sheet |
 | `ShareCard.swift` | ~850 | 1080×1440 分享卡渲染：MapKit 快照、PWA 风格、二维码、保存相册 |
 | `SharePreviewView.swift` | ~100 | 分享预览 Sheet |
+| `TelemetryAdminView.swift` | 管理员 7/30 天匿名样本漏斗、动作成功率、版本与 MetricKit 诊断 |
 
 ### 4.3 数据与服务
 
@@ -196,6 +199,8 @@ python3 run.py
 | `KeychainStore.swift` | Keychain 封装，用于保存 access token |
 | `AppConfiguration.swift` | API Base URL、隐私政策链接、支持邮箱、启动参数读取 |
 | `DesignSystem.swift` | 全局颜色、卡片组件、空状态、格式化工具 |
+| `Telemetry.swift` | 明确同意状态、匿名事件/MetricKit 队列、独立无 Token 传输与 OSLog 分类 |
+| `UITestSupport.swift` | 仅 Debug 编译的 URLProtocol fixture 与 UI 测试登录态注入 |
 
 ### 4.4 资源
 
@@ -310,6 +315,18 @@ ITRA_SEARCH_API_KEY=...
 后端实现位于关联仓库 `/Users/zhaoweiran/projects/TrailBox/api/app/routers/route_intelligence.py` 和 `services/route_intelligence.py`。自动路线分析是可解释的确定性计算；天气来源为 Open-Meteo。MapKit 自动发现的设施在贡献者确认前只能标为「地图信息」，不要表述为已核实的补水或安全设施。
 
 路线智能后端已于 2026-07-13 部署到 `runfast.fun`。部署后必须确认这些路径返回 `application/json`；若得到状态 200 但内容是 `text/html`，说明请求落入了 PWA SPA fallback，App 会因解码失败而只显示本地 MapKit 设施。
+
+### 5.9 首方匿名观测
+
+| 接口 | 用途 |
+|------|------|
+| `POST /telemetry/events` | 无 Token 接收每批最多 50 个白名单事件，事件 UUID 幂等 |
+| `POST /telemetry/reports` | 无 Token 接收最大 512KB 的 MetricKit 指标或诊断报告，报告 UUID 幂等 |
+| `GET /admin/telemetry/summary?days=7|30` | 管理员查看匿名安装、session、会话级漏斗、动作成功率、失败、版本与诊断数量 |
+| `GET /admin/telemetry/reports` | 管理员查看最近诊断报告元数据 |
+| `GET /admin/telemetry/reports/{id}` | 管理员查看单份原始 MetricKit JSON |
+
+首方观测后端已于 2026-07-16 部署到 `runfast.fun`，公共接收路径配置了请求体上限和每 IP 频率限制。客户端必须在用户明确同意后才生成匿名安装 UUID、订阅 MetricKit 或入队；请求永远不携带登录 Token。数据边界、保留期和复查条件见 `docs/agent/decisions/2026-07-16-first-party-telemetry.md`。
 
 ---
 
@@ -598,6 +615,8 @@ http://121.40.151.3:5003
 
 保存后等待证书申请完成，即可通过 `https://runfast.fun` 访问。
 
+首方观测限流配置保存在服务器 `/clouddream/nginx-proxy-manage/data/nginx/custom/http_top.conf` 和 `server_proxy.conf`：前者定义 `trailbox_telemetry` 频率区，后者只为 `runfast.fun` 的 `/telemetry/events`、`/telemetry/reports` 应用精确路径、请求体上限和 `429` 限流。修改后必须先执行 `docker exec nginx-app nginx -t`，通过后再 reload。
+
 ### 12.6 部署后验证清单
 
 ```bash
@@ -708,24 +727,24 @@ chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
 
 - App Store App ID：`6783572832`
 - Bundle ID：`com.trailbox.ios`
-- 已上传版本：`0.1.5`
-- 当前提交审核 build：`7`
-- App Store Version ID：`3f152fff-7b52-4dad-9d51-8ee190cd73b8`
-- Build ID / Delivery UUID：`8924e07e-2d04-4831-bed5-cf3ce7c2802a`
-- Review Submission ID：`1e7c4443-152c-476d-a9bc-aa0d22c9dc51`
+- 已上传版本：`0.1.6`
+- 当前提交审核 build：`8`
+- App Store Version ID：`6b433d54-7964-41be-b13f-3a80b0409f93`
+- Build ID / Delivery UUID：`6824bc36-7f2c-440f-beee-31d997db502f`
+- Review Submission ID：`bfdcaa73-daab-4a0b-bb81-60e8db2bf21d`
 - 当前审核状态：`WAITING_FOR_REVIEW`
-- 提交时间：`2026-07-15T11:15:57.054Z`
-- 商店预览图：简体中文 `APP_IPHONE_67` 与 `APP_IPHONE_65` 各 6 张，均已上传并完成校验
-- 上一版 `0.1.3 (5)` 已处于 `READY_FOR_SALE`。
-- 更新说明：`全面升级路线探索与路线智能；新增出发计划、个人能力匹配和天气/设施/路况信息；优化路线详情、一键出发、收藏、GPX 导出、导航、运动记录图表与 AI 复盘。`
+- 提交时间：`2026-07-16T06:04:25.934Z`
+- 商店预览图：简体中文 `APP_IPHONE_67` 与 `APP_IPHONE_65` 各 6 张，沿用上一版已校验的最新预览图
+- 上一版 `0.1.5 (7)` 已处于 `READY_FOR_SALE`。
+- 更新说明：`新增真实地图路线分享卡；扩大一键出发与分享按钮点击区域；优化分享弹窗响应、生成 loading、长名称、二维码说明和卡片排版。`
 
 ### 15.3 构建与上传命令
 
 构建前至少提升 build 号；如果线上同版本已上架，必须提升 `MARKETING_VERSION`，仅提升 `CURRENT_PROJECT_VERSION` 会被 Apple 拒绝。当前项目已提升到：
 
 ```text
-MARKETING_VERSION = 0.1.5
-CURRENT_PROJECT_VERSION = 7
+MARKETING_VERSION = 0.1.6
+CURRENT_PROJECT_VERSION = 8
 ```
 
 Archive：

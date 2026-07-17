@@ -302,6 +302,7 @@ struct MyContributionsView: View {
                             TrackDetailView(
                                 trackID: track.id,
                                 isPublicSource: true,
+                                telemetrySource: .contribution,
                                 onDeleted: { await onRefresh() },
                                 onSaved: { await onRefresh() }
                             )
@@ -1055,6 +1056,7 @@ struct ITRARaceResultDetailView: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var telemetry: TelemetryConsentController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var showDeleteConfirmation = false
@@ -1075,6 +1077,7 @@ struct SettingsView: View {
             if session.user?.isAdmin == true {
                 Section("管理后台") {
                     NavigationLink("管理后台") { AdminDashboardView() }
+                    NavigationLink("匿名观测") { TelemetryAdminView() }
                     NavigationLink("AI 服务配置") { AdminAISettingsView() }
                     NavigationLink("内容举报") { AdminReportsView() }
                 }
@@ -1101,6 +1104,17 @@ struct SettingsView: View {
             Section("账户安全") {
                 NavigationLink("修改密码") { ChangePasswordView() }
                 Button("删除账户", role: .destructive) { showDeleteConfirmation = true }
+            }
+            Section {
+                Toggle("帮助改进小野box", isOn: Binding(
+                    get: { telemetry.isEnabled },
+                    set: { telemetry.setEnabled($0) }
+                ))
+                .accessibilityIdentifier("telemetry-consent-toggle")
+            } header: {
+                Text("隐私与诊断")
+            } footer: {
+                Text("开启后发送匿名的功能结果、崩溃和性能诊断。不会包含账号、轨迹坐标、路线名称、搜索内容或用户输入；关闭会立即清除本地待发送数据。")
             }
             Section {
                 NavigationLink("隐私政策") { PrivacyPolicyView() }
@@ -1160,13 +1174,14 @@ struct PrivacyPolicyView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("生效日期：2026 年 6 月 21 日").font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
+                Text("最近更新：2026 年 7 月 16 日").font(.footnote).foregroundStyle(TrailBoxColor.secondaryText)
                 privacySection("1. 我们收集的信息", "为注册和使用小野box，我们会处理你提供的用户名、昵称，以及你上传的轨迹文件、路线位置、运动指标、路线名称和标签。你主动使用语音记录或填写感受时，我们也会处理对应的语音转写和文字内容。")
                 privacySection("2. 信息如何使用", "这些信息仅用于账号登录、保存和展示运动记录、生成路线数据、提供搜索筛选以及你主动请求的运动分析。公开路线只会在你开启“公开为探索路线”后展示；你可选择是否展示贡献者昵称。")
                 privacySection("3. 第三方处理", "当你主动使用 AI 分析功能时，必要的运动数据和你输入的感受会发送给 AI 服务商，以生成分析结果。我们不会将你的信息用于广告定向或出售给他人。")
-                privacySection("4. 保存与删除", "信息会在提供服务所需期间保存。你可在“设置 → 账户安全 → 删除账户”中删除账户；我们将删除账户、轨迹文件、公开内容和分析数据，法律要求保留的信息除外。")
-                privacySection("5. 你的选择", "你可以不公开路线、关闭贡献者昵称展示、退出登录，或在公开路线详情中举报内容、屏蔽贡献者。")
-                privacySection("6. 联系我们", "如有隐私问题、删除请求或投诉，请联系 \(AppConfiguration.supportEmail)。")
+                privacySection("4. 匿名诊断与产品交互", "只有在你明确同意后，我们才会收集匿名安装标识、应用与系统版本、固定功能事件及 Apple MetricKit 提供的崩溃和性能诊断。数据不会与登录账号关联，不用于广告，也不包含轨迹坐标、路线名称、搜索词或用户输入。原始数据最多保存 30 天。")
+                privacySection("5. 保存与删除", "账号和运动信息会在提供服务所需期间保存。匿名诊断最多保存 30 天。你可在设置中关闭匿名诊断并清除设备上的待发送队列；也可在“设置 → 账户安全 → 删除账户”中删除账户及关联业务数据，法律要求保留的信息除外。")
+                privacySection("6. 你的选择", "你可以拒绝或关闭匿名诊断、不公开路线、关闭贡献者昵称展示、退出登录，或在公开路线详情中举报内容、屏蔽贡献者。")
+                privacySection("7. 联系我们", "如有隐私问题、删除请求或投诉，请联系 \(AppConfiguration.supportEmail)。")
                 Button("联系隐私支持") {
                     if let url = URL(string: "mailto:\(AppConfiguration.supportEmail)") { openURL(url) }
                 }
@@ -1303,7 +1318,7 @@ struct AdminDashboardView: View {
     @State private var trackPendingDeletion: Track?
     @State private var actionError: String?
     var body: some View {
-        Group { if let stats { List { Section("统计") { metric("全部轨迹", stats.total); metric("公开路线", stats.public); metric("私有记录", stats.private) }; Section("管理工具") { NavigationLink("批量上传轨迹") { AdminBatchUploadView() }; NavigationLink("标签配置") { AdminTagSettingsView() } }; Section("筛选") { TextField("搜索名称、城市或标签", text: $query).onSubmit { Task { await loadTracks() } }; Toggle("仅公开路线", isOn: $publicOnly).onChange(of: publicOnly) { _ in Task { await loadTracks() } } }; Section("最近轨迹") { ForEach(tracks) { track in NavigationLink { AdminTrackEditView(track: track) { Task { await loadTracks() } } } label: { VStack(alignment: .leading, spacing: 3) { Text(track.name); Text("\(track.city ?? "-") · \(track.isPublic ? "公开" : "私有")").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) } }.swipeActions(allowsFullSwipe: false) { Button("删除", role: .destructive) { trackPendingDeletion = track } } } } } } else if let error { EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: error) } else { ProgressView() } }
+        Group { if let stats { List { Section("统计") { metric("全部轨迹", stats.total); metric("公开路线", stats.public); metric("私有记录", stats.private) }; Section("管理工具") { NavigationLink("匿名观测") { TelemetryAdminView() }; NavigationLink("批量上传轨迹") { AdminBatchUploadView() }; NavigationLink("标签配置") { AdminTagSettingsView() } }; Section("筛选") { TextField("搜索名称、城市或标签", text: $query).onSubmit { Task { await loadTracks() } }; Toggle("仅公开路线", isOn: $publicOnly).onChange(of: publicOnly) { _ in Task { await loadTracks() } } }; Section("最近轨迹") { ForEach(tracks) { track in NavigationLink { AdminTrackEditView(track: track) { Task { await loadTracks() } } } label: { VStack(alignment: .leading, spacing: 3) { Text(track.name); Text("\(track.city ?? "-") · \(track.isPublic ? "公开" : "私有")").font(.caption).foregroundStyle(TrailBoxColor.secondaryText) } }.swipeActions(allowsFullSwipe: false) { Button("删除", role: .destructive) { trackPendingDeletion = track } } } } } } else if let error { EmptyStateView(title: "加载失败", systemImage: "exclamationmark.triangle", message: error) } else { ProgressView() } }
             .navigationTitle("管理后台").task { await load() }
             .confirmationDialog("删除轨迹？", isPresented: Binding(get: { trackPendingDeletion != nil }, set: { if !$0 { trackPendingDeletion = nil } }), titleVisibility: .visible) {
                 Button("删除", role: .destructive) { if let track = trackPendingDeletion { delete(track) } }
@@ -1781,6 +1796,7 @@ struct AdminReportsView: View {
 
 struct UploadTrackView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var telemetry: TelemetryConsentController
     let didUpload: (Track) -> Void
     @State private var showFileImporter = false
     @State private var selectedFile: URL?
@@ -1889,6 +1905,7 @@ struct UploadTrackView: View {
     private func upload() {
         guard !isSuggestingMetadata, let selectedFile, let token = session.token else { return }
         isUploading = true; errorMessage = nil
+        telemetry.record(.activityUpload, phase: .started, source: .activity)
         Task {
             let access = selectedFile.startAccessingSecurityScopedResource()
             defer { if access { selectedFile.stopAccessingSecurityScopedResource() } }
@@ -1900,8 +1917,17 @@ struct UploadTrackView: View {
                     method: "POST",
                     token: token
                 )
+                telemetry.record(.activityUpload, phase: .succeeded, source: .activity)
                 didUpload(track)
-            } catch { errorMessage = error.localizedDescription }
+            } catch {
+                telemetry.record(
+                    .activityUpload,
+                    phase: .failed,
+                    source: .activity,
+                    failureCategory: TelemetryFailureCategory.classify(error)
+                )
+                errorMessage = error.localizedDescription
+            }
             isUploading = false
         }
     }

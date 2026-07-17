@@ -32,6 +32,14 @@ struct RouteShareData {
     let elevationLossM: Double?
     let durationText: String?
     let maxElevationM: Double?
+    let difficultyScore: Double?
+    let difficultyLevel: String?
+    let estimatedDurationMin: Int?
+    let estimatedDurationMax: Int?
+    let routeTypeText: String?
+    let routeTagText: String?
+    let sportText: String?
+    let contributorText: String?
     let trackPoints: [TrackPoint]
 
     static func defaultType(for source: ShareSource) -> ShareCardType {
@@ -53,7 +61,7 @@ struct RouteShareData {
         return components?.url
     }
 
-    static func make(from track: Track, source: ShareSource) -> RouteShareData {
+    static func make(from track: Track, source: ShareSource, analysis: RouteAnalysis? = nil) -> RouteShareData {
         let duration: String?
         if let seconds = track.durationSec, seconds > 0 {
             duration = String(format: "%dh%02dm", Int(seconds) / 3600, (Int(seconds) % 3600) / 60)
@@ -71,7 +79,15 @@ struct RouteShareData {
             elevationGainM: track.elevationGainM > 0 ? track.elevationGainM : nil,
             elevationLossM: track.elevationLossM > 0 ? track.elevationLossM : nil,
             durationText: duration,
-            maxElevationM: nil,
+            maxElevationM: analysis?.highestElevationM,
+            difficultyScore: analysis?.difficultyScore,
+            difficultyLevel: analysis?.difficultyLevel,
+            estimatedDurationMin: analysis?.estimatedDurationMin,
+            estimatedDurationMax: analysis?.estimatedDurationMax,
+            routeTypeText: analysis?.routeTypeDisplay,
+            routeTagText: track.tagList.first,
+            sportText: track.sport,
+            contributorText: track.showContributor ? track.contributorName : nil,
             trackPoints: track.points
         )
     }
@@ -207,17 +223,14 @@ private struct BrandFooter: View {
             HStack(alignment: .bottom, spacing: 18) {
                 brandName
                 Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("在 App Store 搜索").font(.system(size: 15, weight: .medium)).foregroundStyle(secondary)
-                    Text("「小野box」下载 APP").font(.system(size: 17, weight: .semibold)).foregroundStyle(foreground)
-                }
+                Text("微信识别查看路线").font(.system(size: 17, weight: .semibold)).foregroundStyle(secondary)
             }
         } else {
             HStack { brandName; Spacer(); Text(type == .activityLightBrand ? "完整路线见「小野box APP」" : "记录每一次向山而行").font(.system(size: 19, weight: .medium)).foregroundStyle(secondary) }
         }
     }
 
-    private var brandName: some View { HStack(spacing: 10) { Image(systemName: "mountain.2.fill").font(.system(size: 22, weight: .bold)).foregroundStyle(foreground).frame(width: 40, height: 40).background(foreground.opacity(0.10)).clipShape(Circle()); Text(type == .activityPure ? "小野box" : "小野box APP").font(.system(size: 25, weight: .bold)).foregroundStyle(foreground) } }
+    private var brandName: some View { HStack(spacing: 10) { Image(systemName: "mountain.2.fill").font(.system(size: 22, weight: .bold)).foregroundStyle(foreground).frame(width: 40, height: 40).background(foreground.opacity(0.10)).clipShape(Circle()); Text(type == .activityPure ? "小野box" : "「小野 BOX」APP").font(.system(size: 25, weight: .bold)).foregroundStyle(foreground) } }
 }
 
 private struct MapBackground: View {
@@ -281,48 +294,440 @@ private enum RouteMapRenderer {
 // Port of the PWA route-share canvas. These coordinates deliberately match the web
 // implementation so exported iOS and PWA route cards share the same composition.
 private enum PWAStyleRouteCardRenderer {
-    static func render(data: RouteShareData, activityType: ShareCardType? = nil) -> UIImage {
+    static func render(data: RouteShareData, activityType: ShareCardType? = nil) async -> UIImage {
         if activityType == .activityLightBrand { return renderActivityLight(data: data) }
+        if activityType == .activityPure { return renderActivityPure(data: data) }
+
+        let mapSize = CGSize(width: 940, height: 558)
+        let mapImage = try? await RouteMapRenderer.image(
+            for: data.trackPoints,
+            size: mapSize,
+            dark: false
+        )
+        return renderRouteCard(data: data, mapImage: mapImage)
+    }
+
+    private static func renderRouteCard(data: RouteShareData, mapImage: UIImage?) -> UIImage {
         let size = CGSize(width: 1080, height: 1440)
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
             let ctx = context.cgContext
-            let background = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [UIColor(hex: 0xF6F5ED).cgColor, UIColor(hex: 0xE8EEE5).cgColor] as CFArray, locations: [0, 1])!
-            ctx.drawLinearGradient(background, start: .zero, end: CGPoint(x: 1080, y: 1440), options: [])
+            drawAmbientBackground(context: ctx, size: size)
+            drawGlassSurface(
+                CGRect(x: 42, y: 42, width: 996, height: 1356),
+                radius: 68,
+                fill: UIColor.white.withAlphaComponent(0.56),
+                stroke: UIColor.white.withAlphaComponent(0.80),
+                shadow: UIColor(hex: 0x1A372D).withAlphaComponent(0.18),
+                shadowBlur: 44,
+                shadowOffset: CGSize(width: 0, height: 24),
+                context: ctx
+            )
 
-            text("小野BOX  ·  TRAIL NOTE", at: CGPoint(x: 72, y: 62), font: .systemFont(ofSize: 28, weight: .bold), color: UIColor(hex: 0x1B332A), context: ctx)
-            if let date = data.startTime { text(date.formatted(.dateTime.year().month().day()), at: CGPoint(x: 1008, y: 62), font: .systemFont(ofSize: 25, weight: .medium), color: UIColor(hex: 0x6C7C70), context: ctx, alignment: .right) }
-            text(fit(data.title, maxWidth: 936, font: .systemFont(ofSize: 61, weight: .bold)), at: CGPoint(x: 72, y: 130), font: .systemFont(ofSize: 61, weight: .bold), color: UIColor(hex: 0x102D23), context: ctx)
-            let isActivity = activityType != nil
-            text(fit("\(data.locationText)  ·  \(isActivity ? "运动记录" : "探索路线")", maxWidth: 936, font: .systemFont(ofSize: 28, weight: .semibold)), at: CGPoint(x: 72, y: 198), font: .systemFont(ofSize: 28, weight: .semibold), color: UIColor(hex: 0x51715F), context: ctx)
+            drawBrandHeader(data: data, context: ctx)
+            let longTitle = drawRouteTitle(data.title, context: ctx)
+            drawRouteSubtitle(data: data, y: longTitle ? 318 : 304, context: ctx)
+            drawDifficultySeal(data: data, context: ctx)
 
-            drawRoute(data.trackPoints, in: CGRect(x: 72, y: 280, width: 936, height: 530), context: ctx, pwaRouteStyle: true)
-
-            let metrics = isActivity
-                ? [("距离", String(format: "%.2f km", data.distanceKm)), ("累计爬升", data.elevationGainM.map { String(format: "%.0f m", $0) } ?? "-"), ("用时", data.durationText ?? "-")]
-                : [("距离", String(format: "%.2f km", data.distanceKm)), ("累计爬升", data.elevationGainM.map { String(format: "%.0f m", $0) } ?? "-"), ("累计下降", data.elevationLossM.map { String(format: "%.0f m", $0) } ?? "-")]
-            for (index, metric) in metrics.enumerated() {
-                let x = CGFloat(72 + index * 312)
-                if index > 0 { ctx.setFillColor(UIColor(hex: 0xCAD4CA).cgColor); ctx.fill(CGRect(x: x - 24, y: 868, width: 1, height: 136)) }
-                text(metric.0, at: CGPoint(x: x, y: 868), font: .systemFont(ofSize: 25, weight: .semibold), color: UIColor(hex: 0x66796B), context: ctx)
-                text(fit(metric.1, maxWidth: 280, font: .systemFont(ofSize: 48, weight: .bold)), at: CGPoint(x: x, y: 920), font: .systemFont(ofSize: 48, weight: .bold), color: UIColor(hex: 0x14362A), context: ctx)
-            }
-
-            ctx.setFillColor(UIColor(hex: 0xC4D1C6).cgColor); ctx.fill(CGRect(x: 72, y: 1074, width: 936, height: 1))
-            if !isActivity {
-                text("把每一段山野，收藏成下一次出发的理由。", at: CGPoint(x: 72, y: 1110), font: .systemFont(ofSize: 29, weight: .semibold), color: UIColor(hex: 0x385746), context: ctx)
-                drawQR(data.qrURL, in: CGRect(x: 820, y: 1102, width: 160, height: 160), context: ctx)
-                text("扫码查看路线", at: CGPoint(x: 900, y: 1278), font: .systemFont(ofSize: 20, weight: .semibold), color: UIColor(hex: 0x587164), context: ctx, alignment: .center)
-                UIColor(hex: 0x173A2D).setFill(); rounded(CGRect(x: 72, y: 1328, width: 936, height: 64), radius: 20).fill()
-                text("TRAILBOX", at: CGPoint(x: 102, y: 1344), font: .systemFont(ofSize: 25, weight: .bold), color: UIColor(hex: 0xD9F3C0), context: ctx)
-                text("iPhone 可在 App Store 下载小野box", at: CGPoint(x: 978, y: 1344), font: .systemFont(ofSize: 22, weight: .semibold), color: .white, context: ctx, alignment: .right)
-            } else {
-                UIColor(hex: 0x173A2D).setFill(); rounded(CGRect(x: 72, y: 1114, width: 936, height: 218), radius: 28).fill()
-                text("●  小野box", at: CGPoint(x: 116, y: 1172), font: .systemFont(ofSize: 36, weight: .bold), color: .white, context: ctx)
-                text("记录每一次向山而行", at: CGPoint(x: 964, y: 1178), font: .systemFont(ofSize: 25, weight: .semibold), color: UIColor(hex: 0xD9F3C0), context: ctx, alignment: .right)
-                text("把每一次出发，都留在山野之间。", at: CGPoint(x: 116, y: 1236), font: .systemFont(ofSize: 23, weight: .medium), color: UIColor.white.withAlphaComponent(0.72), context: ctx)
-            }
+            let mapRect = CGRect(x: 70, y: 366, width: 940, height: 558)
+            drawMap(mapImage, data: data, in: mapRect, context: ctx)
+            drawStats(data: data, context: ctx)
+            drawFooter(data: data, context: ctx)
         }
+    }
+
+    private static func drawAmbientBackground(context: CGContext, size: CGSize) {
+        let base = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [UIColor(hex: 0xE8EEEA).cgColor, UIColor(hex: 0xDBE6E1).cgColor, UIColor(hex: 0xE8E3DC).cgColor] as CFArray,
+            locations: [0, 0.52, 1]
+        )!
+        context.drawLinearGradient(base, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+        drawRadialGlow(center: CGPoint(x: 130, y: 420), radius: 330, color: UIColor(hex: 0xDD6530).withAlphaComponent(0.38), context: context)
+        drawRadialGlow(center: CGPoint(x: 970, y: 610), radius: 390, color: UIColor(hex: 0x287B6D).withAlphaComponent(0.46), context: context)
+        drawRadialGlow(center: CGPoint(x: 500, y: 1400), radius: 410, color: UIColor(hex: 0x9EDBC8).withAlphaComponent(0.58), context: context)
+        drawRadialGlow(center: CGPoint(x: 210, y: 120), radius: 290, color: UIColor(hex: 0xDCF5EE).withAlphaComponent(0.72), context: context)
+        drawRadialGlow(center: CGPoint(x: 930, y: 80), radius: 280, color: UIColor(hex: 0xF7DEC7).withAlphaComponent(0.72), context: context)
+    }
+
+    private static func drawRadialGlow(center: CGPoint, radius: CGFloat, color: UIColor, context: CGContext) {
+        let clear = color.withAlphaComponent(0)
+        guard let gradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [color.cgColor, clear.cgColor] as CFArray,
+            locations: [0, 1]
+        ) else { return }
+        context.drawRadialGradient(
+            gradient,
+            startCenter: center,
+            startRadius: 0,
+            endCenter: center,
+            endRadius: radius,
+            options: [.drawsAfterEndLocation]
+        )
+    }
+
+    private static func drawGlassSurface(
+        _ rect: CGRect,
+        radius: CGFloat,
+        fill: UIColor,
+        stroke: UIColor,
+        shadow: UIColor,
+        shadowBlur: CGFloat,
+        shadowOffset: CGSize,
+        context: CGContext
+    ) {
+        let path = rounded(rect, radius: radius)
+        context.saveGState()
+        context.setShadow(offset: shadowOffset, blur: shadowBlur, color: shadow.cgColor)
+        fill.setFill()
+        path.fill()
+        context.restoreGState()
+        stroke.setStroke()
+        path.lineWidth = 2
+        path.stroke()
+    }
+
+    private static func drawBrandHeader(data: RouteShareData, context: CGContext) {
+        drawAppIcon(in: CGRect(x: 84, y: 82, width: 54, height: 54), context: context)
+        drawText("「小野 BOX」APP", in: CGRect(x: 153, y: 81, width: 360, height: 36), font: pingFang(26, weight: .semibold), color: UIColor(hex: 0x12251E), context: context)
+        drawText("TRAILBOX", in: CGRect(x: 153, y: 118, width: 220, height: 20), font: avenir(12, weight: .semibold), color: UIColor(hex: 0x66756F), characterSpacing: 2, context: context)
+
+        let year = data.startTime.map { Calendar.current.component(.year, from: $0) } ?? Calendar.current.component(.year, from: Date())
+        let issue = "FIELD NOTE 001\n\(data.locationText.uppercased()) / \(year)"
+        drawText(issue, in: CGRect(x: 650, y: 84, width: 344, height: 54), font: avenir(14, weight: .semibold), color: UIColor(hex: 0x65726C), alignment: .right, lineSpacing: 4, characterSpacing: 1.2, context: context)
+    }
+
+    @discardableResult
+    private static func drawRouteTitle(_ title: String, context: CGContext) -> Bool {
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let large = songti(112)
+        let medium = songti(88)
+        let largeWidth = (normalized as NSString).size(withAttributes: [.font: large]).width
+        let mediumWidth = (normalized as NSString).size(withAttributes: [.font: medium]).width
+
+        if normalized.count <= 4, largeWidth <= 760 {
+            drawText(normalized, in: CGRect(x: 82, y: 166, width: 760, height: 128), font: large, color: UIColor(hex: 0x12251E), characterSpacing: -3, context: context)
+            return false
+        }
+        if normalized.count <= 8, mediumWidth <= 760 {
+            drawText(normalized, in: CGRect(x: 82, y: 176, width: 760, height: 108), font: medium, color: UIColor(hex: 0x12251E), characterSpacing: -2, context: context)
+            return false
+        }
+
+        drawText(
+            normalized,
+            in: CGRect(x: 82, y: 160, width: 760, height: 140),
+            font: songti(64),
+            color: UIColor(hex: 0x12251E),
+            lineBreakMode: .byTruncatingTail,
+            lineSpacing: -2,
+            characterSpacing: -1,
+            context: context
+        )
+        return true
+    }
+
+    private static func drawRouteSubtitle(data: RouteShareData, y: CGFloat, context: CGContext) {
+        var labels = [data.sportText?.isEmpty == false ? data.sportText! : "越野跑"]
+        if let tag = data.routeTagText, !tag.isEmpty, !labels.contains(tag) { labels.append(tag) }
+        if labels.count < 2 { labels.append("探索路线") }
+        let routeType = data.routeTypeText?.isEmpty == false ? data.routeTypeText! : "路线"
+        if !labels.contains(routeType) { labels.append(routeType) }
+
+        var x: CGFloat = 88
+        for (index, label) in labels.prefix(3).enumerated() {
+            if index > 0 {
+                UIColor(hex: 0xD85F32).setFill()
+                UIBezierPath(ovalIn: CGRect(x: x, y: y + 10, width: 4, height: 4)).fill()
+                x += 19
+            }
+            let font = pingFang(20, weight: .medium)
+            let width = (label as NSString).size(withAttributes: [.font: font]).width
+            drawText(label, in: CGRect(x: x, y: y, width: width + 4, height: 30), font: font, color: UIColor(hex: 0x51645C), context: context)
+            x += width + 15
+        }
+    }
+
+    private static func drawDifficultySeal(data: RouteShareData, context: CGContext) {
+        let rect = CGRect(x: 882, y: 190, width: 112, height: 112)
+        let path = rounded(rect, radius: 31)
+        context.saveGState()
+        context.setShadow(offset: CGSize(width: 0, height: 13), blur: 22, color: UIColor(hex: 0xB2411B).withAlphaComponent(0.25).cgColor)
+        let gradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [UIColor(hex: 0xE16D3C).cgColor, UIColor(hex: 0xC94D27).cgColor] as CFArray,
+            locations: [0, 1]
+        )!
+        path.addClip()
+        context.drawLinearGradient(gradient, start: rect.origin, end: CGPoint(x: rect.maxX, y: rect.maxY), options: [])
+        context.restoreGState()
+        UIColor.white.withAlphaComponent(0.55).setStroke()
+        path.lineWidth = 2
+        path.stroke()
+
+        let score = Int(resolvedDifficultyScore(data).rounded())
+        let level = resolvedDifficultyLevel(data)
+        drawText("难度", in: CGRect(x: rect.minX, y: 202, width: rect.width, height: 19), font: pingFang(13, weight: .semibold), color: UIColor(hex: 0xFFF8EF), alignment: .center, characterSpacing: 1.6, context: context)
+        drawText("\(score)", in: CGRect(x: rect.minX, y: 220, width: rect.width, height: 49), font: din(41), color: UIColor(hex: 0xFFF8EF), alignment: .center, context: context)
+        drawText(level, in: CGRect(x: rect.minX, y: 271, width: rect.width, height: 19), font: pingFang(13, weight: .semibold), color: UIColor(hex: 0xFFF8EF), alignment: .center, characterSpacing: 1.2, context: context)
+    }
+
+    private static func drawMap(_ mapImage: UIImage?, data: RouteShareData, in rect: CGRect, context: CGContext) {
+        let path = rounded(rect, radius: 48)
+        context.saveGState()
+        context.setShadow(offset: CGSize(width: 0, height: 18), blur: 30, color: UIColor(hex: 0x143E32).withAlphaComponent(0.24).cgColor)
+        UIColor(hex: 0x17493E).setFill()
+        path.fill()
+        context.restoreGState()
+
+        context.saveGState()
+        path.addClip()
+        if let mapImage {
+            mapImage.draw(in: rect)
+        } else {
+            let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [UIColor(hex: 0x2B7568).cgColor, UIColor(hex: 0x153E35).cgColor] as CFArray,
+                locations: [0, 1]
+            )!
+            context.drawLinearGradient(gradient, start: rect.origin, end: CGPoint(x: rect.maxX, y: rect.maxY), options: [])
+        }
+        UIColor(hex: 0x0D3B31).withAlphaComponent(0.16).setFill()
+        context.fill(rect)
+        let sheen = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [UIColor.white.withAlphaComponent(0.16).cgColor, UIColor.white.withAlphaComponent(0).cgColor] as CFArray,
+            locations: [0, 1]
+        )!
+        context.drawLinearGradient(sheen, start: CGPoint(x: rect.minX, y: rect.minY), end: CGPoint(x: rect.midX, y: rect.maxY), options: [])
+        context.restoreGState()
+        UIColor.white.withAlphaComponent(0.72).setStroke()
+        path.lineWidth = 2
+        path.stroke()
+
+        let first = data.trackPoints.first
+        let coordinateText: String
+        if let first {
+            coordinateText = String(format: "%.4f° %@\n%.4f° %@", abs(first.lat), first.lat >= 0 ? "N" : "S", abs(first.lon), first.lon >= 0 ? "E" : "W")
+        } else {
+            coordinateText = data.locationText
+        }
+        drawMapLabel(coordinateText, xAnchor: 92, y: 392, alignment: .left, context: context)
+
+        let altitude = data.calculatedMaxElevation.map { NumberFormatter.localizedString(from: NSNumber(value: Int($0)), number: .decimal) } ?? "—"
+        drawMapLabel("最高海拔\n\(altitude) M", xAnchor: 988, y: 392, alignment: .right, context: context)
+
+        if let contributor = data.contributorText, !contributor.isEmpty {
+            drawText("路线贡献 · \(contributor)", in: CGRect(x: 590, y: 880, width: 396, height: 24), font: pingFang(14, weight: .medium), color: UIColor.white.withAlphaComponent(0.72), alignment: .right, characterSpacing: 1.0, context: context)
+        }
+    }
+
+    private static func drawMapLabel(
+        _ value: String,
+        xAnchor: CGFloat,
+        y: CGFloat,
+        alignment: NSTextAlignment,
+        context: CGContext
+    ) {
+        let font = avenir(14, weight: .semibold)
+        let textWidth = value
+            .components(separatedBy: .newlines)
+            .map { ($0 as NSString).size(withAttributes: [.font: font, .kern: 0.6]).width }
+            .max() ?? 0
+        let width = ceil(textWidth) + 28
+        let rect = CGRect(
+            x: alignment == .right ? xAnchor - width : xAnchor,
+            y: y,
+            width: width,
+            height: 70
+        )
+        drawGlassSurface(rect, radius: 18, fill: UIColor.white.withAlphaComponent(0.16), stroke: UIColor.white.withAlphaComponent(0.34), shadow: .clear, shadowBlur: 0, shadowOffset: .zero, context: context)
+        drawText(value, in: rect.insetBy(dx: 14, dy: 10), font: font, color: UIColor.white.withAlphaComponent(0.94), alignment: alignment, lineSpacing: 2, characterSpacing: 0.6, context: context)
+    }
+
+    private static func drawStats(data: RouteShareData, context: CGContext) {
+        let rect = CGRect(x: 86, y: 946, width: 908, height: 178)
+        drawGlassSurface(rect, radius: 30, fill: UIColor.white.withAlphaComponent(0.60), stroke: UIColor.white.withAlphaComponent(0.78), shadow: UIColor(hex: 0x12372B).withAlphaComponent(0.11), shadowBlur: 20, shadowOffset: CGSize(width: 0, height: 9), context: context)
+
+        let firstDividerX: CGFloat = 446
+        let secondDividerX: CGFloat = 702
+        UIColor(hex: 0x123026).withAlphaComponent(0.13).setFill()
+        context.fill(CGRect(x: firstDividerX, y: 975, width: 1, height: 120))
+        context.fill(CGRect(x: secondDividerX, y: 975, width: 1, height: 120))
+
+        let labelColor = UIColor(hex: 0x677770)
+        let valueColor = UIColor(hex: 0x12251E)
+        drawText("路线距离", in: CGRect(x: 116, y: 978, width: 240, height: 22), font: pingFang(14, weight: .medium), color: labelColor, characterSpacing: 0.5, context: context)
+        drawText(String(format: "%.1f", data.distanceKm), in: CGRect(x: 116, y: 1008, width: 230, height: 76), font: din(68), color: valueColor, context: context)
+        drawText("KM", in: CGRect(x: 322, y: 1051, width: 72, height: 28), font: avenir(19, weight: .semibold), color: UIColor(hex: 0xD65A30), characterSpacing: 0.8, context: context)
+
+        drawText("累计爬升", in: CGRect(x: 476, y: 978, width: 190, height: 22), font: pingFang(14, weight: .medium), color: labelColor, characterSpacing: 0.5, context: context)
+        let gain = data.elevationGainM.map { String(format: "%.0f", $0) } ?? "—"
+        drawText(gain, in: CGRect(x: 476, y: 1012, width: 150, height: 45), font: din(35), color: valueColor, context: context)
+        drawText("M", in: CGRect(x: 624, y: 1027, width: 34, height: 28), font: avenir(18, weight: .semibold), color: valueColor, context: context)
+        let density = data.elevationGainM.map { data.distanceKm > 0 ? String(format: "爬升密度 %.1f m/km", $0 / data.distanceKm) : "爬升密度待计算" } ?? "爬升密度待计算"
+        drawText(density, in: CGRect(x: 476, y: 1068, width: 210, height: 22), font: pingFang(14), color: UIColor(hex: 0x718079), context: context)
+
+        drawText("预计用时", in: CGRect(x: 732, y: 978, width: 190, height: 22), font: pingFang(14, weight: .medium), color: labelColor, characterSpacing: 0.5, context: context)
+        drawText(resolvedEstimatedHours(data), in: CGRect(x: 732, y: 1013, width: 185, height: 45), font: din(33), color: valueColor, context: context)
+        drawText("H", in: CGRect(x: 922, y: 1027, width: 32, height: 28), font: avenir(18, weight: .semibold), color: valueColor, context: context)
+        drawText("路线难度 · \(resolvedDifficultyLevel(data))", in: CGRect(x: 732, y: 1068, width: 220, height: 22), font: pingFang(14), color: UIColor(hex: 0x718079), context: context)
+    }
+
+    private static func drawFooter(data: RouteShareData, context: CGContext) {
+        drawText("READY FOR THE TRAIL", in: CGRect(x: 86, y: 1190, width: 320, height: 24), font: avenir(13, weight: .semibold), color: UIColor(hex: 0xD35B32), characterSpacing: 1.7, context: context)
+        drawText("看懂路线，\n再决定下一次出发。", in: CGRect(x: 86, y: 1220, width: 590, height: 108), font: songti(37), color: UIColor(hex: 0x12251E), lineSpacing: 4, characterSpacing: -0.4, context: context)
+
+        var x: CGFloat = 86
+        for label in ["困难路段", "天气", "沿途设施", "导航"] {
+            let font = pingFang(15)
+            let width = (label as NSString).size(withAttributes: [.font: font]).width
+            drawText(label, in: CGRect(x: x, y: 1341, width: width + 2, height: 24), font: font, color: UIColor(hex: 0x64746D), context: context)
+            x += width + 22
+        }
+
+        drawTransparentQR(data.qrURL, in: CGRect(x: 818, y: 1178, width: 176, height: 176), context: context)
+        drawText("微信识别查看路线", in: CGRect(x: 780, y: 1333, width: 252, height: 22), font: pingFang(12), color: UIColor(hex: 0x4C6158), alignment: .center, characterSpacing: 0.25, context: context)
+    }
+
+    private static func resolvedDifficultyScore(_ data: RouteShareData) -> Double {
+        if let score = data.difficultyScore { return min(max(score, 0), 100) }
+        let climb = data.elevationGainM ?? 0
+        return min(max(data.distanceKm * 1.8 + climb / 33, 10), 100)
+    }
+
+    private static func resolvedDifficultyLevel(_ data: RouteShareData) -> String {
+        if let level = data.difficultyLevel, !level.isEmpty { return level }
+        switch resolvedDifficultyScore(data) {
+        case ..<35: return "简单"
+        case ..<55: return "中等"
+        case ..<75: return "困难"
+        default: return "极难"
+        }
+    }
+
+    private static func resolvedEstimatedHours(_ data: RouteShareData) -> String {
+        if let minimum = data.estimatedDurationMin, let maximum = data.estimatedDurationMax {
+            return String(format: "%.1f–%.1f", Double(minimum) / 60, Double(maximum) / 60)
+        }
+        let center = max(data.distanceKm / 5 + (data.elevationGainM ?? 0) / 600, 0.5)
+        return String(format: "%.1f–%.1f", center * 0.82, center * 1.28)
+    }
+
+    private static func drawTransparentQR(_ url: URL?, in rect: CGRect, context: CGContext) {
+        let generator = CIFilter.qrCodeGenerator()
+        generator.message = Data((url?.absoluteString ?? "https://runfast.fun").utf8)
+        generator.correctionLevel = "M"
+        guard let output = generator.outputImage else { return }
+        let color = CIFilter.falseColor()
+        color.inputImage = output
+        color.color0 = CIColor(red: 16 / 255, green: 37 / 255, blue: 30 / 255, alpha: 1)
+        color.color1 = CIColor(red: 1, green: 1, blue: 1, alpha: 0)
+        guard let transparent = color.outputImage else { return }
+        let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+        guard let image = ciContext.createCGImage(transparent, from: output.extent) else { return }
+
+        let moduleCount = output.extent.width
+        let moduleSize = max(floor(rect.width / (moduleCount + 8)), 1)
+        let contentSize = moduleCount * moduleSize
+        let target = CGRect(x: rect.midX - contentSize / 2, y: rect.midY - contentSize / 2, width: contentSize, height: contentSize).integral
+        context.saveGState()
+        context.interpolationQuality = .none
+        context.setShouldAntialias(false)
+        context.draw(image, in: target)
+        context.restoreGState()
+    }
+
+    private static func drawAppIcon(in rect: CGRect, context: CGContext) {
+        let candidates = ["AppIcon", "AppIcon-180", "AppIcon60x60"]
+        var icon = candidates.lazy.compactMap { UIImage(named: $0) }.first
+        if icon == nil,
+           let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
+           let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+           let files = primary["CFBundleIconFiles"] as? [String],
+           let name = files.last {
+            icon = UIImage(named: name)
+        }
+
+        let path = rounded(rect, radius: 16)
+        context.saveGState()
+        context.setShadow(offset: CGSize(width: 0, height: 7), blur: 12, color: UIColor(hex: 0x18372C).withAlphaComponent(0.14).cgColor)
+        UIColor(hex: 0xDCE9DF).setFill()
+        path.fill()
+        context.restoreGState()
+        context.saveGState()
+        path.addClip()
+        if let icon {
+            icon.draw(in: rect)
+        } else {
+            UIColor(hex: 0x2F6B52).setFill()
+            context.fill(rect)
+            UIImage(systemName: "mountain.2.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: rect.insetBy(dx: 10, dy: 13))
+        }
+        context.restoreGState()
+        UIColor.white.withAlphaComponent(0.84).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    private static func songti(_ size: CGFloat) -> UIFont {
+        UIFont(name: "STSongti-SC-Light", size: size)
+            ?? UIFont(name: "STSongti-SC-Regular", size: size)
+            ?? UIFont(name: "Songti SC", size: size)
+            ?? .systemFont(ofSize: size, weight: .light)
+    }
+
+    private static func pingFang(_ size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
+        let name: String
+        switch weight {
+        case .semibold, .bold, .heavy, .black: name = "PingFangSC-Semibold"
+        case .medium: name = "PingFangSC-Medium"
+        case .light, .thin, .ultraLight: name = "PingFangSC-Light"
+        default: name = "PingFangSC-Regular"
+        }
+        return UIFont(name: name, size: size) ?? .systemFont(ofSize: size, weight: weight)
+    }
+
+    private static func din(_ size: CGFloat) -> UIFont {
+        UIFont(name: "DINAlternate-Bold", size: size)
+            ?? UIFont(name: "AvenirNextCondensed-Bold", size: size)
+            ?? .monospacedDigitSystemFont(ofSize: size, weight: .bold)
+    }
+
+    private static func avenir(_ size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
+        let name: String
+        switch weight {
+        case .bold, .heavy, .black: name = "AvenirNext-Bold"
+        case .semibold: name = "AvenirNext-DemiBold"
+        case .medium: name = "AvenirNext-Medium"
+        default: name = "AvenirNext-Regular"
+        }
+        return UIFont(name: name, size: size) ?? .systemFont(ofSize: size, weight: weight)
+    }
+
+    private static func drawText(
+        _ value: String,
+        in rect: CGRect,
+        font: UIFont,
+        color: UIColor,
+        alignment: NSTextAlignment = .left,
+        lineBreakMode: NSLineBreakMode = .byWordWrapping,
+        lineSpacing: CGFloat = 0,
+        characterSpacing: CGFloat = 0,
+        context: CGContext
+    ) {
+        let style = NSMutableParagraphStyle()
+        style.alignment = alignment
+        style.lineBreakMode = lineBreakMode
+        style.lineSpacing = lineSpacing
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+            .paragraphStyle: style,
+            .kern: characterSpacing
+        ]
+        (value as NSString).draw(in: rect, withAttributes: attributes)
     }
 
     private static func renderActivityPure(data: RouteShareData) -> UIImage {
@@ -440,7 +845,9 @@ final class ShareCardRenderer: ObservableObject {
         status = .rendering
         image = nil
         Task {
-            let rendered = PWAStyleRouteCardRenderer.render(data: data, activityType: type == .routeQR ? nil : type)
+            let rendered = await Task.detached(priority: .userInitiated) {
+                await PWAStyleRouteCardRenderer.render(data: data, activityType: type == .routeQR ? nil : type)
+            }.value
             guard renderIDs[type] == requestID else { return }
             images[type] = rendered
             image = rendered
@@ -469,6 +876,11 @@ enum ImageSaveError: Error { case noPermission, writeFailed }
 
 struct ShareSheet: UIViewControllerRepresentable {
     let image: UIImage
-    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: [image], applicationActivities: nil) }
+    var onComplete: (Bool, Error?) -> Void = { _, _ in }
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        controller.completionWithItemsHandler = { _, completed, _, error in onComplete(completed, error) }
+        return controller
+    }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

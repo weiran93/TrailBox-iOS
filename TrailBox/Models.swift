@@ -777,6 +777,130 @@ struct AIAnalysisResponse: Codable {
 
 struct AdminStats: Codable { let total: Int; let `public`: Int; let `private`: Int }
 
+struct TelemetrySummary: Codable {
+    struct Funnel: Codable, Identifiable {
+        let from: String
+        let to: String
+        let eligibleSessions: Int
+        let convertedSessions: Int
+        let conversionRate: Double
+        var id: String { "\(from)-\(to)" }
+
+        enum CodingKeys: String, CodingKey {
+            case from, to
+            case eligibleSessions = "eligible_sessions"
+            case convertedSessions = "converted_sessions"
+            case conversionRate = "conversion_rate"
+        }
+    }
+
+    struct Action: Codable, Identifiable {
+        let name: String
+        let attempts: Int
+        let succeeded: Int
+        let failed: Int
+        let cancelled: Int
+        let successRate: Double
+        var id: String { name }
+
+        enum CodingKeys: String, CodingKey {
+            case name, attempts, succeeded, failed, cancelled
+            case successRate = "success_rate"
+        }
+    }
+
+    struct Failure: Codable, Identifiable {
+        let category: String
+        let count: Int
+        var id: String { category }
+    }
+
+    struct Version: Codable, Identifiable {
+        let version: String
+        let sessions: Int
+        var id: String { version }
+    }
+
+    struct Diagnostics: Codable {
+        let reports: Int
+        let crashes: Int
+        let hangs: Int
+        let cpuExceptions: Int
+        let diskWriteExceptions: Int
+
+        enum CodingKeys: String, CodingKey {
+            case reports, crashes, hangs
+            case cpuExceptions = "cpu_exceptions"
+            case diskWriteExceptions = "disk_write_exceptions"
+        }
+    }
+
+    let days: Int
+    let sampleNote: String
+    let anonymousInstallations: Int
+    let sessions: Int
+    let funnels: [Funnel]
+    let actions: [Action]
+    let failures: [Failure]
+    let versions: [Version]
+    let diagnostics: Diagnostics
+
+    enum CodingKeys: String, CodingKey {
+        case days, sessions, funnels, actions, failures, versions, diagnostics
+        case sampleNote = "sample_note"
+        case anonymousInstallations = "anonymous_installations"
+    }
+}
+
+struct TelemetryReportSummary: Codable, Identifiable {
+    let id: Int
+    let reportID: String
+    let reportType: String
+    let occurredAt: Date
+    let receivedAt: Date
+    let appVersion: String
+    let build: String
+    let osVersion: String
+    let crashCount: Int
+    let hangCount: Int
+    let cpuExceptionCount: Int
+    let diskWriteExceptionCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, build
+        case reportID = "report_id"
+        case reportType = "report_type"
+        case occurredAt = "occurred_at"
+        case receivedAt = "received_at"
+        case appVersion = "app_version"
+        case osVersion = "os_version"
+        case crashCount = "crash_count"
+        case hangCount = "hang_count"
+        case cpuExceptionCount = "cpu_exception_count"
+        case diskWriteExceptionCount = "disk_write_exception_count"
+    }
+}
+
+struct TelemetryReportDetail: Codable, Identifiable {
+    let id: Int
+    let reportID: String
+    let reportType: String
+    let occurredAt: Date
+    let appVersion: String
+    let build: String
+    let osVersion: String
+    let payload: TelemetryJSONValue
+
+    enum CodingKeys: String, CodingKey {
+        case id, build, payload
+        case reportID = "report_id"
+        case reportType = "report_type"
+        case occurredAt = "occurred_at"
+        case appVersion = "app_version"
+        case osVersion = "os_version"
+    }
+}
+
 struct AdminAISettings: Codable {
     let prompt: String
     let hasDefaultDeepSeekAPIKey: Bool

@@ -190,7 +190,7 @@ This update:
 ## 9. 补充说明
 
 - **年龄分级建议**：因应用包含用户生成内容（UGC）、举报/屏蔽机制以及 AI 生成内容，建议填写「17+」。
-- **数据收集**：App Store Connect「App 隐私」部分需声明：用户 ID、联系信息、健康与健身、位置（粗精度/文件中的位置）、照片/视频（保存）、音频、设备 ID、诊断数据等。具体以应用实际收集为准。
+- **数据收集**：App Store Connect「App 隐私」除既有用户 ID、联系信息、健康与健身、轨迹文件中的位置、音频等声明外，0.1.7 需增加以下未关联用户、非 Tracking 数据：Device ID（随机匿名安装标识）、Product Interaction（固定功能开始/成功/失败/取消）、Crash Data、Performance Data、Other Diagnostic Data。用途选择 Analytics 与 App Functionality；明确不包含账号、轨迹 ID/坐标、路线名称、搜索词、用户输入或 Token。
 - **登录要求**：应用支持游客浏览探索路线，但上传轨迹、AI 分析等功能需要注册/登录账号。
 
 ---

@@ -1,6 +1,6 @@
 # TrailBox iOS 上下文
 
-> 更新时间：2026-07-13
+> 更新时间：2026-07-16
 > 读者：接手 `/Users/zhaoweiran/projects/TrailBox-iOS` 的 Codex / 开发者。
 
 ## 项目状态
@@ -15,11 +15,15 @@
 
 - App 显示名：`小野box`。
 - Bundle ID：`com.trailbox.ios`。
-- 版本：`MARKETING_VERSION = 0.1.5`，`CURRENT_PROJECT_VERSION = 7`；已上传并提交 App Store 审核，商店预览图已同步更新。
+- 版本：`MARKETING_VERSION = 0.1.6`，`CURRENT_PROJECT_VERSION = 8`；已于 2026-07-16 上传并提交 App Store 审核，当前实时状态为 `IN_REVIEW`。审核结束前不要提升到 0.1.7 或上传新 build。
 - 最低系统：iOS 16.0。
 - 设备：仅 iPhone，`TARGETED_DEVICE_FAMILY = 1`。
 - 生命周期：纯 SwiftUI App，入口为 `TrailBox/TrailBoxApp.swift`。
-- `SessionStore`、`DeepLinkRouter`、`SavedRoutesStore`、`DeparturePlanStore` 在 app 入口注入为 environment object。
+- `SessionStore`、`DeepLinkRouter`、`SavedRoutesStore`、`DeparturePlanStore`、`TelemetryConsentController` 在 app 入口注入为 environment object。
+- 工程包含共享 `TrailBox` scheme、`TrailBoxTests` 和 `TrailBoxUITests`。测试分层、命令和 Debug fixture 约定见 `docs/agent/testing.md`。
+- `.github/workflows/ci.yml` 会在 `main` 的 push、pull request 和手动触发时自动执行完整 XCTest 与 Release 模拟器构建；失败诊断从 GitHub Actions 对应运行的 artifact 获取。
+- 首方匿名观测只在用户明确同意后启用。iOS 使用随机安装/会话 UUID、7 天本地队列和 MetricKit；后端使用 HMAC 摘要、30 天保留期和管理员 7/30 天汇总。禁止采集账号、Token、轨迹 ID/坐标、路线名称、搜索词或用户输入；稳定决策见 `docs/agent/decisions/2026-07-16-first-party-telemetry.md`。
+- 首方观测后端已于 2026-07-16 部署到 `runfast.fun`；`/telemetry/events`、`/telemetry/reports` 与 `/admin/telemetry/*` 均已验证返回 JSON，Nginx 对两个公共接收路径启用了请求体上限和每 IP 频率限制。
 - 根导航使用系统 `TabView`；iOS 26 自动采用 Liquid Glass Tab Bar，iOS 16–25 保持对应系统原生样式。未登录选择「运动记录」或「我的」时，由 `RootView` 拦截并弹出认证页，登录成功后再进入原目标 Tab；不要让未登录的记录页停留在 ViewModel 的 loading 状态。Tab Bar 显隐统一由探索、运动记录和「我的」三个根页面根据各自 `navigationPath` 管理：根路径显示、子页面隐藏；详情页和上传页不要再单独设置 `.toolbar(.hidden, for: .tabBar)`，否则 iOS 26 返回根页面后可能残留隐藏状态。根页面进入详情时应更新其绑定的 `navigationPath`；运动记录卡片使用程序化路径跳转，不要改回不更新路径的直接 `NavigationLink`，否则父页面会错误地强制显示 Tab Bar。
 - `TrailBox/DesignSystem.swift` 提供统一的 `trailBoxGlass(...)` 修饰器和 `FloatingActionBar`：iOS 26 使用原生 `glassEffect`，iOS 16–25 使用系统 Material 回退；玻璃效果优先用于导航和悬浮操作层，内容卡片保持实体表面，页面底部主操作复用公共操作栏布局。
 - 当前视觉语言为「山野地图 + Liquid Glass」：基础色使用森林绿、苔藓绿与暖米色，页面背景可使用低对比度等高线纹理；玻璃效果不覆盖主要内容卡片，路线数据和长文本继续使用高对比度实体表面。探索卡片以轨迹图、路线负荷和距离/累计爬升/参考用时组成决策层级；公开路线详情首屏将地图、名称和位置合并为 Hero，并用统一的「路线说明书」汇总距离、爬升、坡度、预计用时、出发判断、动态提醒和资料状态，详细内容使用概览/分析/设施/跑友/剖面吸顶分段导航，原始来源卡片继续保留；详情一级模块标题统一复用同尺寸的圆角图标底板、SF Symbol 与标题字级，不再混用裸标题和普通 `Label`。运动记录根页使用训练总览 Hero 和轨迹记录卡片；记录详情按记录 Hero、运动概览、地图、AI 复盘和运动图表组织，海拔、坡度、心率与配速图表统一以沿途距离为横轴并限制展示采样数。AI 复盘结果按结论、原因、行动、恢复与风险拆分为实体内容块；需同时兼容后端旧文本格式的「核心判断 / 改进建议 / 下次重点看」标题，详情结论始终展示完整正文，不能复用只用于列表的短摘要，也不能用兜底文案覆盖已返回的分析段落。分析期间使用状态进度和分段揭示反馈，并在系统开启「减少动态效果」时关闭循环和位移动画。「我的」根页在个人 Hero 中汇总收藏、贡献和 ITRA，并在收藏与贡献预览中直接展示完整取景的轨迹。
@@ -35,6 +39,7 @@
 - 路线智能信息采用渐进加载：分析、天气、设施和跑友信息各自完成后立即更新；设施检索期间保持固定骨架占位，并在进程内缓存 MapKit 结果，避免卡片延迟插入造成页面跳动。下拉刷新或菜单手动刷新时保留上一次成功数据并显示更新时间，单项失败仅在对应模块提示且支持独立重试，不能因刷新或某项请求失败而清空、静默隐藏整块内容。
 - 登录用户可在公开路线详情根据路线分析、个性化适配、天气、日落、近期路况和设施信息生成「出发计划」。`TrailBox/DeparturePlanStore.swift` 按用户将计划保存在 UserDefaults，计划包含建议出发时间、预计完成区间、最晚安全出发时间、风险摘要和可勾选准备清单；「我的」页提供最近计划预览与完整列表。计划属于本地辅助建议，设施未核实状态和安全免责说明必须保留。
 - 公开路线详情底部主操作为「一键出发」，动作面板集中提供起点导航、出发计划、GPX 导出和路线收藏；公开路线导航与 GPX 导出不要求登录，出发计划和收藏仍要求登录。路线资料状态只根据轨迹解析、路线分析、天气、设施与跑友数据的实际可用性展示，必须明确区分「设施已确认」和「地图设施待核实」，且不能将资料完整度表述为路线安全认证。
+- 公开路线分享卡使用 1080×1440 的柔光磨砂杂志式排版：地图区域必须使用真实 MapKit 快照并完整显示轨迹，距离/爬升/预计用时数据卡与地图分离，标题按实际宽度在最多两行内自适应；难度分使用直立印章，二维码使用透明背景并保留安静区，文案固定为「微信识别查看路线」。分享预览生成期间使用固定 3:4 卡片占位，不能用无尺寸约束的 loading 导致纵向长条或布局跳变。
 - ITRA 详情依赖后端公开资料解析接口：`GET /integrations/itra/profile/{runner_id}` 和 `POST /integrations/itra/profile/parse-html`。如果服务器抓取公开页只得到 partial，iOS 会尝试原生拉取公开 HTML 后提交后端 parser 兜底。
 
 ## 关键命令
@@ -45,6 +50,11 @@ cd /Users/zhaoweiran/projects/TrailBox-iOS
 xcodebuild -scheme TrailBox -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' \
   build CODE_SIGNING_ALLOWED=NO
+
+xcodebuild test -project TrailBox.xcodeproj \
+  -scheme TrailBox \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  CODE_SIGNING_ALLOWED=NO
 ```
 
 本地后端联调：

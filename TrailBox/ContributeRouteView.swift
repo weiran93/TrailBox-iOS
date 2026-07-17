@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 @MainActor
 struct ContributeRouteView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var telemetry: TelemetryConsentController
     @Environment(\.dismiss) private var dismiss
 
     let didUpload: (Track) -> Void
@@ -504,6 +505,7 @@ struct ContributeRouteView: View {
 
         isUploading = true
         errorMessage = nil
+        telemetry.record(.routeContribution, phase: .started, source: .contribution)
 
         Task {
             let access = selectedFile.startAccessingSecurityScopedResource()
@@ -523,9 +525,16 @@ struct ContributeRouteView: View {
                     recommendationReason: reason.isEmpty ? nil : reason,
                     token: token
                 )
+                telemetry.record(.routeContribution, phase: .succeeded, source: .contribution)
                 didUpload(track)
                 dismiss()
             } catch {
+                telemetry.record(
+                    .routeContribution,
+                    phase: .failed,
+                    source: .contribution,
+                    failureCategory: TelemetryFailureCategory.classify(error)
+                )
                 errorMessage = error.localizedDescription
             }
             isUploading = false

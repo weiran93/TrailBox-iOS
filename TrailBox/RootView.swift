@@ -4,6 +4,7 @@ struct RootView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var deepLinkRouter: DeepLinkRouter
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
+    @EnvironmentObject private var telemetry: TelemetryConsentController
     @State private var selectedTab: Tab = .explore
     @State private var showAuthentication = false
     @State private var pendingTabAfterAuthentication: Tab?
@@ -37,7 +38,18 @@ struct RootView: View {
             }
         )) { AuthenticationView() }
         .sheet(item: $deepLinkRouter.pendingRoute) { route in
-            NavigationStack { TrackDetailView(trackID: route.id, isPublicSource: true) }
+            NavigationStack { TrackDetailView(trackID: route.id, isPublicSource: true, telemetrySource: .deepLink) }
+        }
+        .sheet(isPresented: Binding(
+            get: {
+                telemetry.state == .unknown
+                    && !showAuthentication
+                    && !session.shouldPresentAuthentication
+                    && deepLinkRouter.pendingRoute == nil
+            },
+            set: { _ in }
+        )) {
+            TelemetryConsentView()
         }
         .onChange(of: session.isAuthenticated) { isAuthenticated in
             guard isAuthenticated, let pendingTab = pendingTabAfterAuthentication else { return }
@@ -46,6 +58,11 @@ struct RootView: View {
         }
         .task(id: session.token) {
             await savedRoutes.load(token: session.token)
+            handleSavedRoutesAuthenticationIfNeeded()
+        }
+        .onChange(of: savedRoutes.requiresAuthentication) { requiresAuthentication in
+            guard requiresAuthentication else { return }
+            handleSavedRoutesAuthenticationIfNeeded()
         }
         .alert("收藏路线", isPresented: Binding(
             get: { savedRoutes.errorMessage != nil },
@@ -93,6 +110,11 @@ struct RootView: View {
                 pendingTabAfterAuthentication = nil
             }
         )
+    }
+
+    private func handleSavedRoutesAuthenticationIfNeeded() {
+        guard savedRoutes.consumeAuthenticationRequirement() else { return }
+        session.handle(APIError.unauthorized)
     }
 }
 

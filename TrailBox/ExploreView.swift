@@ -270,6 +270,7 @@ struct ExploreView: View {
                 TrackDetailView(
                     trackID: trackID,
                     isPublicSource: true,
+                    telemetrySource: .explore,
                     onDeleted: { await viewModel.load(token: session.token, isRefresh: true) },
                     onSaved: { await viewModel.load(token: session.token, isRefresh: true) }
                 )

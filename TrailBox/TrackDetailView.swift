@@ -134,6 +134,12 @@ private struct NavigationDestination: Identifiable {
     let name: String
 }
 
+private struct SharePreviewRequest: Identifiable {
+    let id = UUID()
+    let source: ShareSource
+    let data: RouteShareData
+}
+
 private enum NavigationProvider: Identifiable {
     case apple, amap(URL), baidu(URL), tencent(URL), google(URL)
 
@@ -453,6 +459,7 @@ struct TrackDetailView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var savedRoutes: SavedRoutesStore
     @EnvironmentObject private var departurePlans: DeparturePlanStore
+    @EnvironmentObject private var telemetry: TelemetryConsentController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = TrackDetailViewModel()
@@ -469,7 +476,7 @@ struct TrackDetailView: View {
     @State private var isVoiceGestureActive = false
     @State private var capturedVoiceText = ""
     @State private var showFullscreenMap = false
-    @State private var showSharePreview = false
+    @State private var sharePreviewRequest: SharePreviewRequest?
     @State private var showReport = false
     @State private var showRouteFeedback = false
     @State private var showStartRouteSheet = false
@@ -479,12 +486,20 @@ struct TrackDetailView: View {
     @Namespace private var routeSectionSelection
     let trackID: String
     let isPublicSource: Bool
+    let telemetrySource: TelemetrySource
     let onDeleted: (() async -> Void)?
     let onSaved: (() async -> Void)?
 
-    init(trackID: String, isPublicSource: Bool, onDeleted: (() async -> Void)? = nil, onSaved: (() async -> Void)? = nil) {
+    init(
+        trackID: String,
+        isPublicSource: Bool,
+        telemetrySource: TelemetrySource? = nil,
+        onDeleted: (() async -> Void)? = nil,
+        onSaved: (() async -> Void)? = nil
+    ) {
         self.trackID = trackID
         self.isPublicSource = isPublicSource
+        self.telemetrySource = telemetrySource ?? (isPublicSource ? .routeDetail : .activity)
         self.onDeleted = onDeleted
         self.onSaved = onSaved
     }
@@ -500,7 +515,20 @@ struct TrackDetailView: View {
         .background(TrailPageBackground())
         .navigationTitle(isPublicSource ? "轨迹详情" : "记录详情")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: session.token) { await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token) }
+        .task(id: session.token) {
+            let startedAt = Date()
+            telemetry.record(.routeOpen, phase: .started, source: telemetrySource)
+            await viewModel.load(id: trackID, isPublic: isPublicSource, token: session.token)
+            let duration = Int(Date().timeIntervalSince(startedAt) * 1_000)
+            switch viewModel.state {
+            case .content:
+                telemetry.record(.routeOpen, phase: .succeeded, source: telemetrySource, durationMS: duration)
+            case .failed:
+                telemetry.record(.routeOpen, phase: .failed, source: telemetrySource, durationMS: duration, failureCategory: .unknown)
+            case .loading:
+                break
+            }
+        }
         .task(id: "\(trackID)-\(session.token ?? "guest")") {
             if isPublicSource {
                 await routeIntelligence.load(trackID: trackID, token: session.token)
@@ -701,7 +729,9 @@ struct TrackDetailView: View {
         }
         .alert("操作失败", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) { Button("确定", role: .cancel) {} } message: { Text(actionError ?? "") }
         .sheet(isPresented: $showFullscreenMap) { NavigationStack { TrackMap(points: track.points, pois: routeMapPOIs).ignoresSafeArea(edges: .bottom).navigationTitle(track.name).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showFullscreenMap = false } } } } }
-        .sheet(isPresented: $showSharePreview) { SharePreviewView(source: isPublicSource ? .exploreRoute : .activity, data: RouteShareData.make(from: track, source: isPublicSource ? .exploreRoute : .activity)) }
+        .sheet(item: $sharePreviewRequest) { request in
+            SharePreviewView(source: request.source, data: request.data)
+        }
         .sheet(isPresented: $showReport) { ReportTrackView(trackID: track.id) }
         .sheet(isPresented: $showRouteFeedback) {
             RouteFeedbackView(trackID: track.id) {
@@ -1758,28 +1788,37 @@ struct TrackDetailView: View {
     }
 
     private func detailActions(_ track: Track) -> some View {
-        FloatingActionBar {
+        let actionShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return FloatingActionBar {
             HStack(spacing: 12) {
                 if isPublicSource {
-                    Button { showStartRouteSheet = true } label: {
+                    Button {
+                        telemetry.record(.departure, phase: .succeeded, source: .routeDetail)
+                        showStartRouteSheet = true
+                    } label: {
                         Label("一键出发", systemImage: "figure.run")
                             .font(.subheadline.weight(.bold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(.white)
                     .buttonStyle(.plain)
-                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(tint: TrailBoxColor.primary, in: actionShape)
+                    .contentShape(actionShape)
+                    .accessibilityIdentifier("route-departure-button")
 
-                    Button { showSharePreview = true } label: {
+                    Button { presentSharePreview(for: track) } label: {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(width: 52, height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(TrailBoxColor.primaryDark)
                     .buttonStyle(.plain)
-                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(in: actionShape)
+                    .contentShape(actionShape)
+                    .accessibilityIdentifier("route-share-button")
                     .accessibilityLabel("分享路线")
                 } else {
                     Button { download(track) } label: {
@@ -1787,23 +1826,39 @@ struct TrackDetailView: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(TrailBoxColor.primaryDark)
                     .buttonStyle(.plain)
-                    .trailBoxGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(in: actionShape)
+                    .contentShape(actionShape)
 
-                    Button { showSharePreview = true } label: {
+                    Button { presentSharePreview(for: track) } label: {
                         Label("分享记录", systemImage: "square.and.arrow.up")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
+                            .contentShape(actionShape)
                     }
                     .foregroundStyle(.white)
                     .buttonStyle(.plain)
-                    .trailBoxGlass(tint: TrailBoxColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .trailBoxGlass(tint: TrailBoxColor.primary, in: actionShape)
+                    .contentShape(actionShape)
                 }
             }
         }
+    }
+
+    private func presentSharePreview(for track: Track) {
+        let source: ShareSource = isPublicSource ? .exploreRoute : .activity
+        sharePreviewRequest = SharePreviewRequest(
+            source: source,
+            data: RouteShareData.make(
+                from: track,
+                source: source,
+                analysis: isPublicSource ? routeIntelligence.analysis : nil
+            )
+        )
     }
 
     private func routeStartActionSheet(_ track: Track) -> some View {
@@ -2202,12 +2257,29 @@ struct TrackDetailView: View {
 
     private func openNavigation(_ provider: NavigationProvider, destination: NavigationDestination) {
         navigationDestination = nil
+        let source = telemetrySource(for: provider)
+        telemetry.record(.navigation, phase: .started, source: source)
         if case .apple = provider {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: destination.point.lat, longitude: destination.point.lon)))
             item.name = destination.name
-            item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+            let opened = item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+            telemetry.record(.navigation, phase: opened ? .succeeded : .failed, source: source, failureCategory: opened ? nil : .unknown)
         } else if let url = provider.url {
-            UIApplication.shared.open(url)
+            UIApplication.shared.open(url, options: [:]) { opened in
+                Task { @MainActor in
+                    telemetry.record(.navigation, phase: opened ? .succeeded : .failed, source: source, failureCategory: opened ? nil : .unknown)
+                }
+            }
+        }
+    }
+
+    private func telemetrySource(for provider: NavigationProvider) -> TelemetrySource {
+        switch provider {
+        case .apple: return .appleMaps
+        case .amap: return .amap
+        case .baidu: return .baidu
+        case .tencent: return .tencent
+        case .google: return .googleMaps
         }
     }
 
@@ -2217,10 +2289,13 @@ struct TrackDetailView: View {
             return
         }
         let token = session.token
+        telemetry.record(.gpxExport, phase: .started, source: .routeDetail)
         Task {
             do {
                 shareFile = ActivityFile(url: try await APIClient.shared.downloadGPX(trackID: track.id, token: token))
+                telemetry.record(.gpxExport, phase: .succeeded, source: .routeDetail)
             } catch APIError.unauthorized {
+                telemetry.record(.gpxExport, phase: .failed, source: .routeDetail, failureCategory: .unauthorized)
                 if isPublicSource {
                     actionError = "这条路线暂时无法公开导出 GPX。"
                 } else {
@@ -2228,6 +2303,7 @@ struct TrackDetailView: View {
                     session.requireAuthentication()
                 }
             } catch {
+                telemetry.record(.gpxExport, phase: .failed, source: .routeDetail, failureCategory: TelemetryFailureCategory.classify(error))
                 actionError = ErrorMessage.display(error)
             }
         }

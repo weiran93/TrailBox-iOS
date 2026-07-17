@@ -28,8 +28,16 @@ final class SavedRoutesStore: ObservableObject {
     @Published private(set) var savingTrackIDs: Set<String> = []
     @Published private(set) var errorMessage: String?
     @Published private(set) var feedback: SavedRouteFeedback?
+    @Published private(set) var requiresAuthentication = false
     private var optimisticStates: [String: Bool] = [:]
     private var previewCache: [String: Track] = [:]
+    private let apiClient: APIClient
+    private let telemetryManager: TelemetryManager
+
+    init(apiClient: APIClient = .shared, telemetryManager: TelemetryManager = .shared) {
+        self.apiClient = apiClient
+        self.telemetryManager = telemetryManager
+    }
 
     var tracks: [Track] { box?.tracks ?? [] }
     var savedTrackIDs: Set<String> { Set(tracks.map(\.id)) }
@@ -47,20 +55,28 @@ final class SavedRoutesStore: ObservableObject {
         feedback = nil
     }
 
+    func consumeAuthenticationRequirement() -> Bool {
+        guard requiresAuthentication else { return false }
+        requiresAuthentication = false
+        return true
+    }
+
     func load(token: String?) async {
         guard let token else {
             box = nil
             feedback = nil
             errorMessage = nil
+            requiresAuthentication = false
             return
         }
         do {
-            let loadedBox: TrackBox = try await APIClient.shared.request("/boxes/want-to-run", token: token)
+            let loadedBox: TrackBox = try await apiClient.request("/boxes/want-to-run", token: token)
             box = boxUsingCachedPreviews(loadedBox)
             box = await hydratedPreviews(in: loadedBox, token: token)
             errorMessage = nil
+            requiresAuthentication = false
         } catch {
-            errorMessage = "收藏路线加载失败：\(ErrorMessage.display(error))"
+            handle(error, messagePrefix: "收藏路线加载失败")
         }
     }
 
@@ -89,6 +105,7 @@ final class SavedRoutesStore: ObservableObject {
         successKind: SavedRouteFeedback.Kind,
         token: String
     ) async {
+        await telemetryManager.record(.favorite, phase: .started, source: .savedRoutes)
         feedback = nil
         errorMessage = nil
         optimisticStates[trackID] = shouldSave
@@ -100,7 +117,7 @@ final class SavedRoutesStore: ObservableObject {
 
         do {
             let method = shouldSave ? "PUT" : "DELETE"
-            let loadedBox: TrackBox = try await APIClient.shared.request(
+            let loadedBox: TrackBox = try await apiClient.request(
                 "/boxes/want-to-run/tracks/\(trackID)",
                 method: method,
                 token: token
@@ -109,8 +126,27 @@ final class SavedRoutesStore: ObservableObject {
             box = await hydratedPreviews(in: loadedBox, token: token)
             errorMessage = nil
             feedback = SavedRouteFeedback(trackID: trackID, kind: successKind)
+            await telemetryManager.record(.favorite, phase: .succeeded, source: .savedRoutes)
         } catch {
-            errorMessage = "收藏操作失败：\(ErrorMessage.display(error))"
+            handle(error, messagePrefix: "收藏操作失败")
+            await telemetryManager.record(
+                .favorite,
+                phase: .failed,
+                source: .savedRoutes,
+                failureCategory: TelemetryFailureCategory.classify(error)
+            )
+        }
+    }
+
+    private func handle(_ error: Error, messagePrefix: String) {
+        if case APIError.unauthorized = error {
+            box = nil
+            feedback = nil
+            errorMessage = nil
+            requiresAuthentication = true
+        } else {
+            requiresAuthentication = false
+            errorMessage = "\(messagePrefix)：\(ErrorMessage.display(error))"
         }
     }
 
@@ -131,7 +167,7 @@ final class SavedRoutesStore: ObservableObject {
             for _ in 0..<min(6, missingTracks.count) {
                 guard let track = iterator.next() else { break }
                 group.addTask {
-                    try? await APIClient.shared.request("/tracks/\(track.id)/public", token: token)
+                    try? await self.apiClient.request("/tracks/\(track.id)/public", token: token)
                 }
             }
             while let track = await group.next() {
@@ -141,7 +177,7 @@ final class SavedRoutesStore: ObservableObject {
                 }
                 if let nextTrack = iterator.next() {
                     group.addTask {
-                        try? await APIClient.shared.request("/tracks/\(nextTrack.id)/public", token: token)
+                        try? await self.apiClient.request("/tracks/\(nextTrack.id)/public", token: token)
                     }
                 }
             }
