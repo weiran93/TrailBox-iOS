@@ -104,25 +104,19 @@ Your track collection for trail running and hiking. Import, explore, and share r
 ### 中文
 ```
 本次更新：
-• 全面升级路线探索：支持意图入口、城市/距离/排序筛选与路线负荷提示
-• 新增路线智能与出发计划，集中查看难度、天气、设施、路况和跑友反馈
-• 优化路线详情与一键出发流程，支持收藏、GPX 导出和起终点导航
-• 优化运动记录详情、图表和 AI 复盘，完整展示训练结论与行动建议
-• 优化收藏路线预览、登录引导和页面返回体验
-• 修复部分轨迹累计爬升统计偏高，并区分个人运动记录与贡献路线
-• 优化路线剖面跳转和一键出发操作区域
+• 新增可选择开启的匿名使用与崩溃、性能诊断，帮助持续改进体验
+• 优化登录过期处理，避免账号状态显示不一致
+• 优化路线分享卡二维码说明和地图信息标签排版
+• 提升路线、收藏、一键出发与分享流程的稳定性
 ```
 
 ### 英文
 ```
 This update:
-• Upgrades route discovery with intent shortcuts, filters, and transparent route-load hints
-• Adds route intelligence and departure plans for difficulty, weather, facilities, conditions, and community feedback
-• Improves route details and the one-tap start flow with favorites, GPX export, and navigation
-• Improves activity details, charts, and AI workout reviews with complete conclusions and action tips
-• Improves saved-route previews, login guidance, and navigation behavior
-• Fixes inflated elevation totals for some tracks and separates personal activities from route contributions
-• Improves profile-section navigation and the one-tap start hit area
+• Adds optional anonymous usage, crash, and performance diagnostics to help improve the app
+• Improves expired-session handling so account state stays consistent
+• Refines QR-code captions and map information labels on route share cards
+• Improves reliability across routes, favorites, one-tap departure, and sharing
 ```
 
 ---
