@@ -104,19 +104,17 @@ Your track collection for trail running and hiking. Import, explore, and share r
 ### 中文
 ```
 本次更新：
-• 新增可选择开启的匿名使用与崩溃、性能诊断，帮助持续改进体验
-• 优化登录过期处理，避免账号状态显示不一致
-• 优化路线分享卡二维码说明和地图信息标签排版
-• 提升路线、收藏、一键出发与分享流程的稳定性
+• 修复部分设备启动后可能闪退的问题
+• 优化匿名使用与 MetricKit 诊断的并发上传稳定性
+• 提升应用启动和后台恢复可靠性
 ```
 
 ### 英文
 ```
 This update:
-• Adds optional anonymous usage, crash, and performance diagnostics to help improve the app
-• Improves expired-session handling so account state stays consistent
-• Refines QR-code captions and map information labels on route share cards
-• Improves reliability across routes, favorites, one-tap departure, and sharing
+• Fixes a launch crash affecting some devices
+• Improves concurrent uploads for anonymous telemetry and MetricKit diagnostics
+• Improves reliability during app launch and background restoration
 ```
 
 ---

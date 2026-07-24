@@ -1,6 +1,6 @@
 # TrailBox iOS 测试指南
 
-> 更新时间：2026-07-16
+> 更新时间：2026-07-24
 
 ## 测试分层
 
@@ -54,11 +54,13 @@ python -m pytest -q
 - `-trailboxUITestAuthenticated` 注入固定测试用户；`-trailboxUITestExpiredSession` 让收藏启动请求返回 401；`-trailboxUITestConsent unknown|enabled|disabled` 控制同意状态；`-trailboxUITestReset` 清理测试遥测状态。
 - Release 构建不得包含测试网络拦截行为，不得依赖生产账号或真实生产数据。
 - API/遥测测试不得断言或记录真实 Token、账号、轨迹 ID、坐标、路线名称或用户输入。
+- 修改遥测队列或发送生命周期时，必须覆盖事件与 MetricKit 报告并发 flush、上传中关闭同意、上传期间新增事件和发送失败保留队列；测试 transport 应能阻塞请求，确保 actor 在网络 `await` 期间发生重入。
 
 ## 运行时机
 
 - 修改模型、APIClient、状态管理或导航：至少运行 `TrailBoxTests` 和模拟器构建。
 - 修改登录拦截、根导航、探索/详情/收藏/出发或隐私设置：运行完整 iOS 测试。
 - 修改后端接口、模型或数据存储：运行后端全量测试；涉及 iOS wire shape 时再运行完整 iOS 测试。
+- 修改遥测队列、MetricKit 接收或同意开关：至少运行 `TrailBoxTests/TelemetryTests`、完整 iOS 测试和 Release Archive。
 - App Store 提交前：完整 iOS 测试、后端测试、Release archive，并在真机验证 MetricKit 订阅和关闭开关。真实 MetricKit 报告可能延迟，不作为自动化测试阻塞项。
 - PR 或 push 的 CI 失败时不得进入发布流程；先从 Actions 的失败 step 和诊断 artifact 定位并修复。

@@ -1,7 +1,7 @@
 # TrailBox iOS — Agent 接手文档
 
 > 文档定位：本文件面向需要继续迭代、修复或扩展 TrailBox iOS 端的 AI Agent / 开发者。阅读后应能独立完成编译、运行、定位代码、添加功能。
-> 文档版本：2026-07-16（基于项目当前文件状态）
+> 文档版本：2026-07-24（基于项目当前文件状态）
 > 项目路径：`/Users/zhaoweiran/projects/TrailBox-iOS`
 
 ---
@@ -27,7 +27,7 @@
 
 - **App 显示名**：`小野box`
 - **Bundle ID**：`com.trailbox.ios`
-- **当前版本**：`0.1.6`（Build `8`，App Store 状态 `IN_REVIEW`）
+- **当前版本**：`0.1.8`（Build `10`，App Store 状态 `WAITING_FOR_REVIEW`）
 - **iOS 最低版本**：iOS 16.0
 - **设备支持**：仅 iPhone（`TARGETED_DEVICE_FAMILY = 1`）
 - **开发团队**：`CNXB3793X3`
@@ -327,6 +327,8 @@ ITRA_SEARCH_API_KEY=...
 | `GET /admin/telemetry/reports/{id}` | 管理员查看单份原始 MetricKit JSON |
 
 首方观测后端已于 2026-07-16 部署到 `runfast.fun`，公共接收路径配置了请求体上限和每 IP 频率限制。客户端必须在用户明确同意后才生成匿名安装 UUID、订阅 MetricKit 或入队；请求永远不携带登录 Token。数据边界、保留期和复查条件见 `docs/agent/decisions/2026-07-16-first-party-telemetry.md`。
+
+`TelemetryManager.flush()` 必须保持 single-flight；网络 `await` 返回后只能按事件/报告 UUID 删除已确认上传的队列项，并校验当前同意生命周期，禁止按旧数组位置或数量删除。线上 `0.1.7 (9)` 因旧实现存在启动期并发闪退，服务端会对该 build 的两个公共遥测接收路径返回 `503` 和 `Retry-After`，业务 API 不受影响；在 `0.1.8 (10)` 覆盖并复查崩溃报告前不要移除此隔离。
 
 ---
 
@@ -723,28 +725,28 @@ chmod 700 /Users/zhaoweiran/.private_keys /Users/zhaoweiran/.private_keys/appsto
 chmod 600 /Users/zhaoweiran/.private_keys/appstoreconnect/*.p8
 ```
 
-### 15.2 本次发布状态
+### 15.2 当前发布状态
 
 - App Store App ID：`6783572832`
 - Bundle ID：`com.trailbox.ios`
-- 已上传版本：`0.1.6`
-- 当前提交审核 build：`8`
-- App Store Version ID：`6b433d54-7964-41be-b13f-3a80b0409f93`
-- Build ID / Delivery UUID：`6824bc36-7f2c-440f-beee-31d997db502f`
-- Review Submission ID：`bfdcaa73-daab-4a0b-bb81-60e8db2bf21d`
+- 已上传版本：`0.1.8`
+- 当前提交审核 build：`10`
+- App Store Version ID：`7004b19c-f356-41d4-8154-d4c0315227e4`
+- Build ID / Delivery UUID：`84f346ce-8b4d-4a7b-ab14-e5b2d9d676dd`
+- Review Submission ID：`b0b6f3af-8e95-48fc-88ad-f4fe72169f85`
 - 当前审核状态：`WAITING_FOR_REVIEW`
-- 提交时间：`2026-07-16T06:04:25.934Z`
+- 提交时间：`2026-07-24T03:52:11.975Z`
 - 商店预览图：简体中文 `APP_IPHONE_67` 与 `APP_IPHONE_65` 各 6 张，沿用上一版已校验的最新预览图
-- 上一版 `0.1.5 (7)` 已处于 `READY_FOR_SALE`。
-- 更新说明：`新增真实地图路线分享卡；扩大一键出发与分享按钮点击区域；优化分享弹窗响应、生成 loading、长名称、二维码说明和卡片排版。`
+- 上一版 `0.1.7 (9)` 已处于 `READY_FOR_SALE`，其遥测接收仍由服务端临时隔离。
+- 更新说明：`修复部分设备启动后可能闪退的问题；优化匿名使用与 MetricKit 诊断的并发上传稳定性；提升应用启动和后台恢复可靠性。`
 
 ### 15.3 构建与上传命令
 
 构建前至少提升 build 号；如果线上同版本已上架，必须提升 `MARKETING_VERSION`，仅提升 `CURRENT_PROJECT_VERSION` 会被 Apple 拒绝。当前项目已提升到：
 
 ```text
-MARKETING_VERSION = 0.1.6
-CURRENT_PROJECT_VERSION = 8
+MARKETING_VERSION = 0.1.8
+CURRENT_PROJECT_VERSION = 10
 ```
 
 Archive：
