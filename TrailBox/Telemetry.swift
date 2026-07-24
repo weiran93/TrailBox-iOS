@@ -402,6 +402,9 @@ actor TelemetryManager: APIEventReceiving {
     private var isEnabled = false
     private var installationID: String?
     private var sessionID: String?
+    private var isFlushing = false
+    private var flushRequested = false
+    private var lifecycleGeneration: UInt64 = 0
 
     init(
         defaults: UserDefaults = .standard,
@@ -419,6 +422,7 @@ actor TelemetryManager: APIEventReceiving {
     }
 
     func activate() async {
+        lifecycleGeneration &+= 1
         isEnabled = true
         if let stored = defaults.string(forKey: Self.installationKey), UUID(uuidString: stored) != nil {
             installationID = stored.lowercased()
@@ -433,9 +437,11 @@ actor TelemetryManager: APIEventReceiving {
     }
 
     func deactivate() {
+        lifecycleGeneration &+= 1
         isEnabled = false
         installationID = nil
         sessionID = nil
+        flushRequested = false
         queue = Queue()
         defaults.removeObject(forKey: Self.installationKey)
         defaults.removeObject(forKey: Self.queueKey)
@@ -493,10 +499,33 @@ actor TelemetryManager: APIEventReceiving {
     }
 
     func flush() async {
-        guard isEnabled, let installationID, let sessionID else { return }
+        flushRequested = true
+        guard !isFlushing else { return }
+
+        isFlushing = true
+        defer { isFlushing = false }
+
+        repeat {
+            flushRequested = false
+            guard isEnabled, let installationID, let sessionID else { continue }
+            let generation = lifecycleGeneration
+            await drainQueue(
+                installationID: installationID,
+                sessionID: sessionID,
+                generation: generation
+            )
+        } while flushRequested
+    }
+
+    private func drainQueue(
+        installationID: String,
+        sessionID: String,
+        generation: UInt64
+    ) async {
         pruneAndPersist()
         while !queue.events.isEmpty {
             let events = Array(queue.events.prefix(50))
+            let eventIDs = Set(events.map(\.id))
             do {
                 try await transport.send(events: TelemetryEventBatch(
                     installationID: installationID,
@@ -504,7 +533,8 @@ actor TelemetryManager: APIEventReceiving {
                     metadata: metadata,
                     events: events
                 ))
-                queue.events.removeFirst(events.count)
+                guard isCurrentLifecycle(generation) else { return }
+                queue.events.removeAll { eventIDs.contains($0.id) }
                 persist()
             } catch {
                 logger.error("event upload deferred: \(error.localizedDescription, privacy: .private)")
@@ -512,6 +542,7 @@ actor TelemetryManager: APIEventReceiving {
             }
         }
         while let report = queue.reports.first {
+            let reportID = report.id
             do {
                 try await transport.send(report: TelemetryReportUpload(
                     installationID: installationID,
@@ -519,13 +550,18 @@ actor TelemetryManager: APIEventReceiving {
                     metadata: metadata,
                     report: report
                 ))
-                queue.reports.removeFirst()
+                guard isCurrentLifecycle(generation) else { return }
+                queue.reports.removeAll { $0.id == reportID }
                 persist()
             } catch {
                 logger.error("diagnostic upload deferred: \(error.localizedDescription, privacy: .private)")
                 break
             }
         }
+    }
+
+    private func isCurrentLifecycle(_ generation: UInt64) -> Bool {
+        isEnabled && lifecycleGeneration == generation
     }
 
     func snapshot() -> TelemetryQueueSnapshot {

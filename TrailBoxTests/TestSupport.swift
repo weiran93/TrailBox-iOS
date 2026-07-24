@@ -78,6 +78,46 @@ actor CapturingTelemetryTransport: TelemetryTransporting {
     }
 }
 
+actor BlockingTelemetryTransport: TelemetryTransporting {
+    private(set) var eventAttempts: [TelemetryEventBatch] = []
+    private(set) var reportAttempts: [TelemetryReportUpload] = []
+    private(set) var completedEventBatches: [TelemetryEventBatch] = []
+    private(set) var completedReports: [TelemetryReportUpload] = []
+    private var eventWaiters: [CheckedContinuation<Void, Never>] = []
+    private var reportWaiters: [CheckedContinuation<Void, Never>] = []
+
+    var pendingEventCount: Int { eventWaiters.count }
+    var pendingReportCount: Int { reportWaiters.count }
+
+    func send(events: TelemetryEventBatch) async throws {
+        eventAttempts.append(events)
+        await withCheckedContinuation { continuation in
+            eventWaiters.append(continuation)
+        }
+        completedEventBatches.append(events)
+    }
+
+    func send(report: TelemetryReportUpload) async throws {
+        reportAttempts.append(report)
+        await withCheckedContinuation { continuation in
+            reportWaiters.append(continuation)
+        }
+        completedReports.append(report)
+    }
+
+    func releaseEventSends() {
+        let waiters = eventWaiters
+        eventWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    func releaseReportSends() {
+        let waiters = reportWaiters
+        reportWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+}
+
 final class FakeMetricKitReporter: MetricKitReporting {
     private(set) var isStarted = false
     var capture: ((MetricKitCapturedReport) -> Void)?

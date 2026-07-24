@@ -119,6 +119,155 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(reportObject["crash_count"] as? Int, 1)
     }
 
+    func testConcurrentEventFlushUsesSingleFlightAndDeletesByID() async {
+        let defaults = makeDefaults()
+        let transport = BlockingTelemetryTransport()
+        let manager = TelemetryManager(
+            defaults: defaults,
+            transport: transport,
+            metadata: .init(appVersion: "test", build: "1", osVersion: "iOS test")
+        )
+        await manager.activate()
+
+        let recordTask = Task {
+            await manager.record(.routeOpen, phase: .succeeded, source: .explore)
+        }
+        let uploadStarted = await eventually {
+            await transport.pendingEventCount == 1
+        }
+        XCTAssertTrue(uploadStarted)
+
+        let flushTasks = (0..<8).map { _ in
+            Task { await manager.flush() }
+        }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        let pendingEventCount = await transport.pendingEventCount
+        let eventAttemptCount = await transport.eventAttempts.count
+        XCTAssertEqual(pendingEventCount, 1)
+        XCTAssertEqual(eventAttemptCount, 1)
+
+        await transport.releaseEventSends()
+        await recordTask.value
+        for task in flushTasks {
+            await task.value
+        }
+
+        let snapshot = await manager.snapshot()
+        let completed = await transport.completedEventBatches
+        XCTAssertEqual(snapshot.eventCount, 0)
+        XCTAssertEqual(completed.count, 1)
+        XCTAssertEqual(Set(completed.flatMap(\.events).map(\.id)).count, 1)
+    }
+
+    func testConcurrentReportFlushUsesSingleFlightAndDeletesByID() async {
+        let defaults = makeDefaults()
+        let transport = BlockingTelemetryTransport()
+        let manager = TelemetryManager(
+            defaults: defaults,
+            transport: transport,
+            metadata: .init(appVersion: "test", build: "1", osVersion: "iOS test")
+        )
+        await manager.activate()
+
+        let report = TelemetryReportRecord(reportType: .diagnostic, crashCount: 1, payload: .object([:]))
+        let enqueueTask = Task {
+            await manager.enqueue(report: report)
+        }
+        let uploadStarted = await eventually {
+            await transport.pendingReportCount == 1
+        }
+        XCTAssertTrue(uploadStarted)
+
+        let flushTasks = (0..<8).map { _ in
+            Task { await manager.flush() }
+        }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        let pendingReportCount = await transport.pendingReportCount
+        let reportAttemptCount = await transport.reportAttempts.count
+        XCTAssertEqual(pendingReportCount, 1)
+        XCTAssertEqual(reportAttemptCount, 1)
+
+        await transport.releaseReportSends()
+        await enqueueTask.value
+        for task in flushTasks {
+            await task.value
+        }
+
+        let snapshot = await manager.snapshot()
+        let completed = await transport.completedReports
+        XCTAssertEqual(snapshot.reportCount, 0)
+        XCTAssertEqual(completed.map(\.report.id), [report.id])
+    }
+
+    func testEventQueuedDuringUploadIsDrainedByActiveFlush() async {
+        let defaults = makeDefaults()
+        let transport = BlockingTelemetryTransport()
+        let manager = TelemetryManager(
+            defaults: defaults,
+            transport: transport,
+            metadata: .init(appVersion: "test", build: "1", osVersion: "iOS test")
+        )
+        await manager.activate()
+
+        let firstRecordTask = Task {
+            await manager.record(.routeOpen, phase: .succeeded, source: .explore)
+        }
+        let firstUploadStarted = await eventually {
+            await transport.pendingEventCount == 1
+        }
+        XCTAssertTrue(firstUploadStarted)
+
+        await manager.record(.favorite, phase: .succeeded, source: .savedRoutes)
+        var snapshot = await manager.snapshot()
+        XCTAssertEqual(snapshot.eventCount, 2)
+
+        await transport.releaseEventSends()
+        let secondUploadStarted = await eventually {
+            let pendingEventCount = await transport.pendingEventCount
+            let eventAttemptCount = await transport.eventAttempts.count
+            return pendingEventCount == 1 && eventAttemptCount == 2
+        }
+        XCTAssertTrue(secondUploadStarted)
+
+        await transport.releaseEventSends()
+        await firstRecordTask.value
+
+        snapshot = await manager.snapshot()
+        let completed = await transport.completedEventBatches.flatMap(\.events)
+        XCTAssertEqual(snapshot.eventCount, 0)
+        XCTAssertEqual(completed.count, 2)
+        XCTAssertEqual(Set(completed.map(\.id)).count, 2)
+    }
+
+    func testDeactivationDuringUploadDoesNotMutateClearedQueue() async {
+        let defaults = makeDefaults()
+        let transport = BlockingTelemetryTransport()
+        let manager = TelemetryManager(
+            defaults: defaults,
+            transport: transport,
+            metadata: .init(appVersion: "test", build: "1", osVersion: "iOS test")
+        )
+        await manager.activate()
+
+        let recordTask = Task {
+            await manager.record(.appSession, phase: .succeeded, source: .app)
+        }
+        let uploadStarted = await eventually {
+            await transport.pendingEventCount == 1
+        }
+        XCTAssertTrue(uploadStarted)
+
+        await manager.deactivate()
+        await transport.releaseEventSends()
+        await recordTask.value
+
+        let snapshot = await manager.snapshot()
+        XCTAssertFalse(snapshot.isEnabled)
+        XCTAssertFalse(snapshot.hasInstallationID)
+        XCTAssertEqual(snapshot.eventCount, 0)
+        XCTAssertEqual(snapshot.reportCount, 0)
+    }
+
     @MainActor
     func testConsentControllerCreatesAndClearsIdentity() async throws {
         let defaults = makeDefaults()
